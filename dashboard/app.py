@@ -582,9 +582,69 @@ with tab1:
             fig_dist.update_layout(height=400, xaxis_title="수익률", yaxis_title="빈도")
             st.plotly_chart(fig_dist, width="stretch")
         
-        # ─── 최근 신호 테이블 ───
+        # ─── 최근 신호 테이블 & 상세 분석 ───
         st.markdown("---")
-        st.subheader("📋 최근 신호 목록")
+        st.subheader("📋 최근 신호 목록 & 상세 분석")
+        
+        # 신호 선택
+        signal_options = []
+        for idx, row in df_signals.head(50).iterrows():
+            created_at_str = pd.to_datetime(row['created_at']).strftime('%Y-%m-%d %H:%M')
+            signal_label = f"{row['signal']} | {row['symbol']} ({row['tf']}) | {created_at_str}"
+            signal_options.append((signal_label, row['id']))
+        
+        if signal_options:
+            selected_label = st.selectbox(
+                "🔍 신호를 선택하면 상세 애널리스트 리포트를 확인할 수 있습니다",
+                [opt[0] for opt in signal_options],
+                index=0
+            )
+            
+            # 선택된 신호 ID 찾기
+            selected_id = next((opt[1] for opt in signal_options if opt[0] == selected_label), None)
+            
+            if selected_id:
+                # 선택된 신호 상세 정보 가져오기
+                selected_signal = df_signals[df_signals['id'] == selected_id].iloc[0]
+                
+                # 데이터베이스에서 전체 정보 가져오기
+                from signal_analyst import SignalAnalyst
+                
+                db = SessionLocal()
+                signal_obj = db.query(Signal).filter(Signal.id == selected_id).first()
+                
+                if signal_obj:
+                    # Signal 객체를 dict로 변환
+                    signal_dict = {
+                        'id': signal_obj.id,
+                        'symbol': signal_obj.symbol,
+                        'tf': signal_obj.tf,
+                        'signal': signal_obj.signal,
+                        'created_at': signal_obj.created_at,
+                        'features_json': signal_obj.features_json
+                    }
+                    
+                    # 애널리스트 리포트 생성
+                    report = SignalAnalyst.generate_report(signal_dict)
+                    
+                    # 리포트 표시
+                    st.markdown("---")
+                    st.markdown(report)
+                    
+                    # 다운로드 버튼
+                    st.download_button(
+                        label="📥 리포트 다운로드 (Markdown)",
+                        data=report,
+                        file_name=f"signal_report_{signal_obj.symbol}_{signal_obj.signal}_{pd.to_datetime(signal_obj.created_at).strftime('%Y%m%d_%H%M')}.md",
+                        mime="text/markdown",
+                        use_container_width=True
+                    )
+                
+                db.close()
+        
+        # 전체 신호 테이블 (간략 버전)
+        st.markdown("---")
+        st.subheader("📊 전체 신호 목록 (간략)")
         
         display_df = df_signals[[
             'created_at', 'symbol', 'tf', 'signal',
@@ -594,7 +654,8 @@ with tab1:
         display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
         display_df.columns = ['시각', '심볼', 'TF', '신호', 'TrendScore', 'Prob', 'RSI', 'VolMult', '10-bar 수익률']
         
-        st.dataframe(display_df, width="stretch", height=600)
+        with st.expander("📋 전체 목록 보기", expanded=False):
+            st.dataframe(display_df, width="stretch", height=400)
 
 
 # ═══════════════════════════════════════════════════════════
