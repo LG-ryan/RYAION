@@ -1,10 +1,12 @@
 """
-TradingView 백테스트 결과를 FastAPI로 전송하는 스크립트
+TradingView 백테스트 결과를 FastAPI로 전송하는 스크립트 (v4 Dynamic)
 
 사용법:
-1. TradingView Strategy Tester → "List of Trades" → CSV 다운로드
-2. CSV 파일을 이 스크립트와 같은 폴더에 저장
-3. python import_backtest_signals.py --csv trades.csv --symbol SPX --timeframe 1D
+1. TradingView Strategy Tester → "List of Trades" → Export to CSV
+2. CSV 파일 저장
+3. python import_backtest_signals.py --csv trades.csv --symbol SPX --timeframe 1D --clear
+
+주의: --clear 옵션은 기존 DB를 완전히 삭제합니다!
 """
 
 import requests
@@ -13,9 +15,14 @@ import sys
 import argparse
 from datetime import datetime
 import time
+import os
+from pathlib import Path
 
 # FastAPI 서버 URL
 API_URL = "http://localhost:8000/alert"
+
+# DB 파일 경로
+DB_PATH = Path(__file__).parent.parent / "vmsi_sdm.db"
 
 def parse_tradingview_csv(csv_file, symbol, timeframe):
     """
@@ -86,40 +93,82 @@ def send_signal_to_api(signal):
     except Exception as e:
         return False, str(e)
 
+def clear_database():
+    """기존 DB 파일 삭제"""
+    if DB_PATH.exists():
+        try:
+            os.remove(DB_PATH)
+            print(f"✓ Deleted existing database: {DB_PATH}")
+            return True
+        except Exception as e:
+            print(f"✗ Error deleting database: {e}")
+            return False
+    else:
+        print("⚠ No existing database found")
+        return True
+
 def main():
-    parser = argparse.ArgumentParser(description='Import TradingView backtest signals to FastAPI')
-    parser.add_argument('--csv', required=True, help='CSV file from TradingView')
+    parser = argparse.ArgumentParser(description='Import TradingView backtest signals to FastAPI (v4 Dynamic)')
+    parser.add_argument('--csv', required=True, help='CSV file from TradingView Strategy Tester')
     parser.add_argument('--symbol', required=True, help='Symbol (e.g. SPX, AAPL)')
     parser.add_argument('--timeframe', required=True, help='Timeframe (e.g. 1D, 4H, 1H)')
-    parser.add_argument('--clear', action='store_true', help='Clear existing signals first')
+    parser.add_argument('--clear', action='store_true', help='⚠️  Clear existing database (DELETE ALL DATA!)')
     
     args = parser.parse_args()
     
-    print("=" * 60)
-    print("TradingView Backtest → FastAPI Signal Importer")
-    print("=" * 60)
-    print(f"CSV File: {args.csv}")
-    print(f"Symbol: {args.symbol}")
-    print(f"Timeframe: {args.timeframe}")
+    print("=" * 70)
+    print("TradingView Backtest → FastAPI Signal Importer (v4 Dynamic)")
+    print("=" * 70)
+    print(f"CSV File:    {args.csv}")
+    print(f"Symbol:      {args.symbol}")
+    print(f"Timeframe:   {args.timeframe}")
+    print(f"Clear DB:    {'YES ⚠️  (ALL DATA WILL BE DELETED!)' if args.clear else 'NO'}")
     print()
     
-    # 1. CSV 파싱
-    print("[1/3] Parsing CSV...")
+    # 확인 프롬프트
+    if args.clear:
+        confirm = input("⚠️  Are you sure you want to DELETE ALL existing data? (yes/no): ")
+        if confirm.lower() != 'yes':
+            print("❌ Aborted by user")
+            return
+    
+    # 1. 기존 신호 삭제
+    if args.clear:
+        print("\n[1/4] Clearing existing database...")
+        if not clear_database():
+            print("❌ Failed to clear database. Aborting.")
+            return
+        print("✓ Database cleared successfully")
+        time.sleep(2)  # FastAPI가 새 DB 생성하도록 대기
+    
+    # 2. CSV 파싱
+    step = 2 if args.clear else 1
+    total_steps = 4 if args.clear else 3
+    print(f"\n[{step}/{total_steps}] Parsing CSV...")
     try:
         signals = parse_tradingview_csv(args.csv, args.symbol, args.timeframe)
         print(f"✓ Found {len(signals)} signals")
+        
+        if len(signals) == 0:
+            print("❌ No signals found in CSV. Check your file format.")
+            return
+        
+        # 신호 미리보기
+        print("\nFirst 3 signals:")
+        for i, sig in enumerate(signals[:3], 1):
+            print(f"  {i}. {sig['action']} @ ${sig['price']:.2f} on {datetime.fromtimestamp(sig['ts_unix']).strftime('%Y-%m-%d')}")
+        
     except Exception as e:
         print(f"✗ Error parsing CSV: {e}")
+        import traceback
+        traceback.print_exc()
         return
     
-    # 2. 기존 신호 삭제 (선택)
-    if args.clear:
-        print("\n[2/3] Clearing existing signals...")
-        # TODO: DB 초기화 API 엔드포인트 필요
-        print("⚠ Clear function not implemented yet")
-    
     # 3. 신호 전송
-    print(f"\n[{'3' if not args.clear else '2'}/3] Sending signals to FastAPI...")
+    step += 1
+    print(f"\n[{step}/{total_steps}] Sending signals to FastAPI...")
+    print("⏳ This may take a few minutes for large datasets...")
+    
     success_count = 0
     fail_count = 0
     
@@ -128,25 +177,36 @@ def main():
         
         if success:
             success_count += 1
-            print(f"✓ [{i}/{len(signals)}] {signal['action']} @ {signal['price']:.2f} → Saved")
+            if i % 10 == 0 or i == 1:  # 10개마다 출력
+                print(f"✓ [{i}/{len(signals)}] {signal['action']} @ ${signal['price']:.2f} → Saved")
         else:
             fail_count += 1
             print(f"✗ [{i}/{len(signals)}] Failed: {result}")
         
         # API 부하 방지
-        time.sleep(0.1)
+        time.sleep(0.05)
     
-    # 결과 요약
+    # 4. 결과 요약
+    step += 1
+    print(f"\n[{step}/{total_steps}] Import Complete!")
     print()
-    print("=" * 60)
-    print("Import Complete!")
-    print("=" * 60)
-    print(f"Total Signals: {len(signals)}")
-    print(f"Success: {success_count}")
-    print(f"Failed: {fail_count}")
+    print("=" * 70)
+    print("📊 IMPORT SUMMARY")
+    print("=" * 70)
+    print(f"Total Signals:   {len(signals)}")
+    print(f"✅ Success:      {success_count} ({success_count/len(signals)*100:.1f}%)")
+    print(f"❌ Failed:       {fail_count} ({fail_count/len(signals)*100:.1f}%)")
     print()
-    print("✓ Check your dashboard: http://localhost:8501")
-    print("=" * 60)
+    print(f"📅 Date Range:   {datetime.fromtimestamp(signals[0]['ts_unix']).strftime('%Y-%m-%d')} → {datetime.fromtimestamp(signals[-1]['ts_unix']).strftime('%Y-%m-%d')}")
+    print(f"🔢 Symbol:       {args.symbol}")
+    print(f"⏱️  Timeframe:   {args.timeframe}")
+    print()
+    print("=" * 70)
+    print("✅ Next Steps:")
+    print("   1. Open dashboard: http://localhost:8501")
+    print("   2. Check 'Signal Monitoring' tab")
+    print("   3. Select a signal to view analyst report")
+    print("=" * 70)
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,300 @@
+//@version=6
+indicator("VMSI-SDM v4 Dynamic", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+
+// ═══════════════════════════════════════════════════════════
+// 📌 v4 Dynamic - 완전 동적 SL/TP + 신호 번호 + 매도 신호
+// 
+// 변경사항:
+// 1. 동적 SL/TP: ATR + VCP + 신호 강도 기반
+// 2. 신호 번호: 각 신호에 고유 번호 부여
+// 3. 매도 신호 강화: 조건 완화로 매도 신호 증가
+// 4. 라벨 상세 정보: 클릭 시 상세 데이터 표시
+// 5. 테이블 실시간: 현재 봉 상태 표시
+// ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// PARAMETERS
+// ═══════════════════════════════════════════════════════════
+
+var g_basic = "기본 설정"
+ema1_len = input.int(20, "EMA1 기간", group=g_basic)
+ema2_len = input.int(50, "EMA2 기간", group=g_basic)
+rsi_len = input.int(14, "RSI 기간", group=g_basic)
+vcp_len = input.int(20, "VCP 기간", group=g_basic)
+atr_len = input.int(14, "ATR 기간", group=g_basic)
+
+var g_signal = "신호 조건"
+trend_score_buy = input.float(55, "트렌드 스코어 (매수)", minval=50, maxval=80, step=5, group=g_signal)
+trend_score_sell = input.float(45, "트렌드 스코어 (매도)", minval=20, maxval=50, step=5, group=g_signal)
+rsi_buy_min = input.float(48, "RSI 최소값 (매수)", minval=30, maxval=70, step=2, group=g_signal)
+rsi_sell_max = input.float(52, "RSI 최대값 (매도)", minval=30, maxval=70, step=2, group=g_signal)
+vol_mult_min = input.float(1.2, "거래량배수 최소값", minval=0.5, maxval=3, step=0.1, group=g_signal)
+
+var g_weights = "가중치"
+alpha = input.float(0.8, "Alpha (EMA)", step=0.05, group=g_weights)
+beta = input.float(0.35, "Beta (RSI)", step=0.05, group=g_weights)
+gamma = input.float(0.7, "Gamma (Volume)", step=0.05, group=g_weights)
+delta = input.float(0.6, "Delta (VCP)", step=0.05, group=g_weights)
+
+var g_sltp = "손익 설정 (동적)"
+use_atr_based = input.bool(true, "ATR 기반 SL/TP 사용", group=g_sltp)
+atr_sl_mult = input.float(1.5, "ATR SL 배수", step=0.1, minval=0.5, maxval=5, group=g_sltp)
+atr_tp_mult = input.float(2.5, "ATR TP 배수", step=0.1, minval=1, maxval=10, group=g_sltp)
+fixed_sl_pct = input.float(5.0, "고정 손절 % (ATR 비활성화 시)", step=0.5, minval=1, maxval=20, group=g_sltp)
+fixed_tp_pct = input.float(10.0, "고정 익절 % (ATR 비활성화 시)", step=0.5, minval=2, maxval=50, group=g_sltp)
+show_sltp_lines = input.bool(true, "SL/TP 라인 표시", group=g_sltp)
+sltp_line_width = input.int(1, "라인 두께", minval=1, maxval=3, group=g_sltp)
+
+var g_display = "표시 옵션"
+show_signals = input.bool(true, "매수/매도 신호 표시", group=g_display)
+show_signal_numbers = input.bool(true, "신호 번호 표시", group=g_display)
+label_size_option = input.string("Small", "라벨 크기", options=["Tiny", "Small", "Normal"], group=g_display)
+
+var g_webhook = "웹훅"
+webhook_url = input.string("", "Webhook URL", group=g_webhook)
+enable_webhook = input.bool(true, "웹훅 활성화", group=g_webhook)
+
+// ═══════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════
+
+clamp(x, lo, hi) => math.max(lo, math.min(hi, x))
+safe_div(a, b, fallback) => nz(b > 0 ? a / b : fallback, fallback)
+
+// ═══════════════════════════════════════════════════════════
+// INDICATORS
+// ═══════════════════════════════════════════════════════════
+
+ema1 = ta.ema(close, ema1_len)
+ema2 = ta.ema(close, ema2_len)
+rsi = ta.rsi(close, rsi_len)
+vol_avg = ta.sma(volume, 20)
+vol_mult = safe_div(volume, vol_avg, 1.0)
+vcp_high = ta.highest(high, vcp_len)
+vcp_low = ta.lowest(low, vcp_len)
+vcp_ratio = safe_div(vcp_high - vcp_low, vcp_high, 0.5)
+atr_val = ta.atr(atr_len)
+
+// ═════════════════════════════════════════════════════════
+// TREND SCORE
+// ═══════════════════════════════════════════════════════════
+
+calc_trend_score() =>
+    ema_above = ema1 > ema2 ? 1.0 : 0.0
+    rsi_norm = rsi / 100.0
+    vol_norm = math.min(vol_mult / 3.0, 1.0)
+    vcp_norm = 1.0 - vcp_ratio
+    raw = (alpha * ema_above + beta * rsi_norm + gamma * vol_norm + delta * vcp_norm) * 100.0
+    clamp(raw, 0.0, 100.0)
+
+trend_score = calc_trend_score()
+
+// ═══════════════════════════════════════════════════════════
+// DYNAMIC SL/TP CALCULATION
+// ═══════════════════════════════════════════════════════════
+
+calc_dynamic_sl_tp(signal_type) =>
+    var float sl_distance = 0.0
+    var float tp_distance = 0.0
+    
+    if use_atr_based
+        // ATR 기반 계산
+        base_sl = atr_val * atr_sl_mult
+        base_tp = atr_val * atr_tp_mult
+        
+        // VCP로 조정 (변동성 높으면 SL/TP 확대)
+        vcp_adjustment = 1.0 + (vcp_ratio * 0.5)
+        sl_distance := base_sl * vcp_adjustment
+        tp_distance := base_tp * vcp_adjustment
+    else
+        // 고정 % 기반
+        sl_distance := close * (fixed_sl_pct / 100.0)
+        tp_distance := close * (fixed_tp_pct / 100.0)
+    
+    // 신호 강도에 따라 미세 조정
+    if trend_score >= 70 or trend_score <= 30
+        // 강한 신호: TP 확대
+        tp_distance := tp_distance * 1.2
+    
+    [sl_distance, tp_distance]
+
+// ═══════════════════════════════════════════════════════════
+// SIGNAL LOGIC
+// ═══════════════════════════════════════════════════════════
+
+// 매수 신호 (조건 완화)
+buy_signal = barstate.isconfirmed and trend_score >= trend_score_buy and rsi > rsi_buy_min and vol_mult > vol_mult_min and ema1 > ema2
+
+// 매도 신호 (조건 완화)
+sell_signal = barstate.isconfirmed and trend_score <= trend_score_sell and rsi < rsi_sell_max and vol_mult > vol_mult_min and ema1 < ema2
+
+// ═══════════════════════════════════════════════════════════
+// SIGNAL TRACKING
+// ═══════════════════════════════════════════════════════════
+
+var int buy_counter = 0
+var int sell_counter = 0
+
+if buy_signal
+    buy_counter := buy_counter + 1
+    
+if sell_signal
+    sell_counter := sell_counter + 1
+
+// ═══════════════════════════════════════════════════════════
+// VISUALIZATION
+// ═══════════════════════════════════════════════════════════
+
+plot(ema1, "EMA1", color=color.new(color.blue, 0), linewidth=2)
+plot(ema2, "EMA2", color=color.new(color.orange, 0), linewidth=2)
+
+label_size = label_size_option == "Tiny" ? size.tiny : label_size_option == "Small" ? size.small : size.normal
+
+// 매수 신호 표시
+if show_signals and buy_signal
+    [sl_dist, tp_dist] = calc_dynamic_sl_tp("BUY")
+    
+    entry_price = close
+    sl_price = entry_price - sl_dist
+    tp_price = entry_price + tp_dist
+    
+    sl_pct = (sl_dist / entry_price) * 100
+    tp_pct = (tp_dist / entry_price) * 100
+    
+    // 라벨 텍스트 생성 (상세 정보 포함)
+    label_text = show_signal_numbers ? str.tostring(buy_counter) : "매수"
+    tooltip_text = "매수 #" + str.tostring(buy_counter) + "\n" +
+                   "가격: " + str.tostring(entry_price, "#.##") + "\n" +
+                   "SL: " + str.tostring(sl_price, "#.##") + " (-" + str.tostring(sl_pct, "#.#") + "%)\n" +
+                   "TP: " + str.tostring(tp_price, "#.##") + " (+" + str.tostring(tp_pct, "#.#") + "%)\n" +
+                   "RSI: " + str.tostring(rsi, "#.#") + " | Vol: " + str.tostring(vol_mult, "#.#") + "x\n" +
+                   "Trend: " + str.tostring(trend_score, "#.#")
+    
+    label.new(bar_index, low, label_text, 
+              style=label.style_label_up, 
+              color=color.new(color.green, 0), 
+              textcolor=color.white, 
+              size=label_size,
+              tooltip=tooltip_text)
+    
+    // SL/TP 라인 생성
+    if show_sltp_lines
+        // 진입가 라인
+        line.new(bar_index, entry_price, bar_index + 20, entry_price, 
+                 color=color.new(color.blue, 50), width=sltp_line_width, style=line.style_solid)
+        
+        // 손절가 라인
+        line.new(bar_index, sl_price, bar_index + 20, sl_price, 
+                 color=color.new(color.red, 0), width=sltp_line_width, style=line.style_dashed)
+        
+        // 익절가 라인
+        line.new(bar_index, tp_price, bar_index + 20, tp_price, 
+                 color=color.new(color.lime, 0), width=sltp_line_width, style=line.style_dashed)
+        
+        // 번호 라벨 (SL/TP)
+        if show_signal_numbers
+            label.new(bar_index + 5, sl_price, "#" + str.tostring(buy_counter) + " SL", 
+                      style=label.style_label_left, color=color.new(color.red, 30), 
+                      textcolor=color.white, size=size.tiny)
+            label.new(bar_index + 5, tp_price, "#" + str.tostring(buy_counter) + " TP", 
+                      style=label.style_label_left, color=color.new(color.lime, 30), 
+                      textcolor=color.black, size=size.tiny)
+
+// 매도 신호 표시
+if show_signals and sell_signal
+    [sl_dist, tp_dist] = calc_dynamic_sl_tp("SELL")
+    
+    entry_price = close
+    sl_price = entry_price + sl_dist
+    tp_price = entry_price - tp_dist
+    
+    sl_pct = (sl_dist / entry_price) * 100
+    tp_pct = (tp_dist / entry_price) * 100
+    
+    // 라벨 텍스트 생성
+    label_text = show_signal_numbers ? str.tostring(sell_counter) : "매도"
+    tooltip_text = "매도 #" + str.tostring(sell_counter) + "\n" +
+                   "가격: " + str.tostring(entry_price, "#.##") + "\n" +
+                   "SL: " + str.tostring(sl_price, "#.##") + " (+" + str.tostring(sl_pct, "#.#") + "%)\n" +
+                   "TP: " + str.tostring(tp_price, "#.##") + " (-" + str.tostring(tp_pct, "#.#") + "%)\n" +
+                   "RSI: " + str.tostring(rsi, "#.#") + " | Vol: " + str.tostring(vol_mult, "#.#") + "x\n" +
+                   "Trend: " + str.tostring(trend_score, "#.#")
+    
+    label.new(bar_index, high, label_text, 
+              style=label.style_label_down, 
+              color=color.new(color.red, 0), 
+              textcolor=color.white, 
+              size=label_size,
+              tooltip=tooltip_text)
+    
+    // 매도는 인버스용이므로 SL/TP 라인 표시 안 함 (요청사항)
+
+// ═══════════════════════════════════════════════════════════
+// INFO PANEL (실시간 업데이트)
+// ═══════════════════════════════════════════════════════════
+
+var table panel = table.new(position.top_right, 2, 7, border_width=1)
+if true  // 항상 업데이트 (barstate.islast 제거)
+    table.cell(panel, 0, 0, "현재 가격", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 1, 0, str.tostring(close, "#.##"), bgcolor=color.new(color.gray, 80), text_color=color.white)
+    
+    table.cell(panel, 0, 1, "Trend Score", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    ts_color = trend_score >= 60 ? color.new(color.green, 20) : (trend_score <= 40 ? color.new(color.red, 20) : color.new(color.gray, 80))
+    table.cell(panel, 1, 1, str.tostring(trend_score, "#.0"), bgcolor=ts_color, text_color=color.white)
+    
+    table.cell(panel, 0, 2, "RSI", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    rsi_color = rsi > 60 ? color.new(color.green, 20) : (rsi < 40 ? color.new(color.red, 20) : color.new(color.gray, 80))
+    table.cell(panel, 1, 2, str.tostring(rsi, "#.0"), bgcolor=rsi_color, text_color=color.white)
+    
+    table.cell(panel, 0, 3, "거래량배수", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    vol_color = vol_mult > 2 ? color.new(color.orange, 20) : color.new(color.gray, 80)
+    table.cell(panel, 1, 3, str.tostring(vol_mult, "#.#") + "x", bgcolor=vol_color, text_color=color.white)
+    
+    table.cell(panel, 0, 4, "EMA 정렬", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    ema_status = ema1 > ema2 ? "정배열" : "역배열"
+    ema_color = ema1 > ema2 ? color.new(color.green, 20) : color.new(color.red, 20)
+    table.cell(panel, 1, 4, ema_status, bgcolor=ema_color, text_color=color.white)
+    
+    table.cell(panel, 0, 5, "ATR", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 1, 5, str.tostring(atr_val, "#.##"), bgcolor=color.new(color.gray, 80), text_color=color.white)
+    
+    table.cell(panel, 0, 6, "신호 수", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    signal_text = "매수:" + str.tostring(buy_counter) + " 매도:" + str.tostring(sell_counter)
+    table.cell(panel, 1, 6, signal_text, bgcolor=color.new(color.blue, 20), text_color=color.white)
+
+// ═══════════════════════════════════════════════════════════
+// WEBHOOK ALERT (동적 SL/TP 포함)
+// ═══════════════════════════════════════════════════════════
+
+if enable_webhook and buy_signal
+    [sl_dist, tp_dist] = calc_dynamic_sl_tp("BUY")
+    sl_price = close - sl_dist
+    tp_price = close + tp_dist
+    
+    json_p1 = '{"ts_unix":' + str.tostring(time, "#") + ',"symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '"'
+    json_p2 = ',"action":"BUY","price":' + str.tostring(close, "#.##") + ',"signal_number":' + str.tostring(buy_counter)
+    json_p3 = ',"trend_score":' + str.tostring(trend_score, "#.##")
+    json_p4 = ',"rsi":' + str.tostring(rsi, "#.##") + ',"vol_mult":' + str.tostring(vol_mult, "#.##")
+    json_p5 = ',"ema1":' + str.tostring(ema1, "#.##") + ',"ema2":' + str.tostring(ema2, "#.##")
+    json_p6 = ',"sl_price":' + str.tostring(sl_price, "#.##") + ',"tp_price":' + str.tostring(tp_price, "#.##")
+    json_p7 = ',"atr":' + str.tostring(atr_val, "#.##") + ',"vcp_ratio":' + str.tostring(vcp_ratio, "#.####")
+    json_p8 = ',"version":"vmsi_sdm_v4_dynamic"}'
+    alert_msg = json_p1 + json_p2 + json_p3 + json_p4 + json_p5 + json_p6 + json_p7 + json_p8
+    alert(alert_msg, alert.freq_once_per_bar_close)
+
+if enable_webhook and sell_signal
+    [sl_dist, tp_dist] = calc_dynamic_sl_tp("SELL")
+    sl_price = close + sl_dist
+    tp_price = close - tp_dist
+    
+    json_p1 = '{"ts_unix":' + str.tostring(time, "#") + ',"symbol":"' + syminfo.ticker + ',"timeframe":"' + timeframe.period + '"'
+    json_p2 = ',"action":"SELL","price":' + str.tostring(close, "#.##") + ',"signal_number":' + str.tostring(sell_counter)
+    json_p3 = ',"trend_score":' + str.tostring(trend_score, "#.##")
+    json_p4 = ',"rsi":' + str.tostring(rsi, "#.##") + ',"vol_mult":' + str.tostring(vol_mult, "#.##")
+    json_p5 = ',"ema1":' + str.tostring(ema1, "#.##") + ',"ema2":' + str.tostring(ema2, "#.##")
+    json_p6 = ',"sl_price":' + str.tostring(sl_price, "#.##") + ',"tp_price":' + str.tostring(tp_price, "#.##")
+    json_p7 = ',"atr":' + str.tostring(atr_val, "#.##") + ',"vcp_ratio":' + str.tostring(vcp_ratio, "#.####")
+    json_p8 = ',"version":"vmsi_sdm_v4_dynamic"}'
+    alert_msg = json_p1 + json_p2 + json_p3 + json_p4 + json_p5 + json_p6 + json_p7 + json_p8
+    alert(alert_msg, alert.freq_once_per_bar_close)
+
