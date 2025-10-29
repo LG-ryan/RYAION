@@ -53,36 +53,49 @@ async def receive_alert(
     db: Session = Depends(get_db)
 ):
     """
-    TradingView Webhook 알럿 수신
+    TradingView Webhook 알럿 수신 (v2.1 - Simplified)
     
-    - **symbol**: 심볼 (AAPL, BTCUSD 등)
-    - **signal**: BUY, SELL, WATCH_UP, WATCH_DOWN
-    - **features**: TrendScore, Prob, RSI 등
-    - **params**: 지표 파라미터
+    - **symbol**: 심볼 (SPX, AAPL 등)
+    - **action**: BUY, SELL
+    - **trend_score**, **prob**, **rsi** 등: 단순화된 flat 구조
     """
     try:
-        # 신호 저장
+        # 신호 저장 (v2.1 simplified structure)
+        features_json = {
+            "trend_score": alert.trend_score,
+            "prob": alert.prob,
+            "rsi": alert.rsi,
+            "vol_mult": alert.vol_mult,
+            "vcp_ratio": alert.vcp_ratio,
+            "dist_ath": alert.dist_ath,
+            "ema1": alert.ema1,
+            "ema2": alert.ema2,
+            "bar_state": alert.bar_state,
+            "fast_mode": alert.fast_mode,
+            "realtime_macro": alert.realtime_macro,
+            "version": alert.version
+        }
+        
         signal = Signal(
-            ts=alert.t,
+            ts=str(alert.ts_unix),
             symbol=alert.symbol,
-            tf=alert.tf,
-            signal=alert.signal,
-            features_json=alert.features.dict(),
-            params_json=alert.params.dict()
+            tf=alert.timeframe,
+            signal=alert.action,
+            features_json=features_json,
+            params_json={}  # Params는 features에 포함
         )
         db.add(signal)
         db.commit()
         db.refresh(signal)
         
         # 백그라운드에서 라벨링 수행 (비동기)
-        if alert.signal in ["BUY", "SELL"]:
+        if alert.action in ["BUY", "SELL"]:
             background_tasks.add_task(labeler.label_signal, db, signal)
         
         return SignalResponse(
             status="success",
             signal_id=signal.id,
-            message=f"Signal {alert.signal} received for {alert.symbol}",
-            received_at=datetime.utcnow()
+            message=f"Signal saved"
         )
     
     except Exception as e:
