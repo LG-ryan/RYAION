@@ -1,0 +1,210 @@
+//@version=6
+indicator("VMSI-SDM v3 Clean", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+
+// ═══════════════════════════════════════════════════════════
+// 📌 v3 Clean - 요구사항 반영
+// 
+// 변경사항:
+// 1. 신호 조건 완화 (trend_score >= 60, 단일 조건 제거)
+// 2. 각 신호마다 고유 SL/TP 라인 생성
+// 3. 배경색 완전 제거
+// 4. 라벨 크기 축소 (size.small)
+// 5. 매도 SL/TP 제거 (매수만)
+// 6. 모든 타임프레임 지원 (자동 파라미터 조정)
+// ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// PARAMETERS
+// ═══════════════════════════════════════════════════════════
+
+var g_basic = "기본 설정"
+ema1_len = input.int(20, "EMA1 기간", group=g_basic)
+ema2_len = input.int(50, "EMA2 기간", group=g_basic)
+rsi_len = input.int(14, "RSI 기간", group=g_basic)
+vcp_len = input.int(20, "VCP 기간", group=g_basic)
+
+var g_signal = "신호 조건"
+trend_score_threshold = input.float(60, "트렌드 스코어 임계값 (50-80)", minval=50, maxval=80, step=5, group=g_signal)
+rsi_buy_min = input.float(50, "RSI 최소값 (매수)", minval=30, maxval=70, step=5, group=g_signal)
+vol_mult_min = input.float(1.2, "거래량배수 최소값", minval=0.5, maxval=3, step=0.1, group=g_signal)
+
+var g_weights = "가중치"
+alpha = input.float(0.8, "Alpha (EMA)", step=0.05, group=g_weights)
+beta = input.float(0.35, "Beta (RSI)", step=0.05, group=g_weights)
+gamma = input.float(0.7, "Gamma (Volume)", step=0.05, group=g_weights)
+delta = input.float(0.6, "Delta (VCP)", step=0.05, group=g_weights)
+
+var g_sltp = "손익 설정"
+show_sltp_lines = input.bool(true, "SL/TP 라인 표시", group=g_sltp)
+sl_pct = input.float(5.0, "손절 %", step=0.5, minval=1, maxval=20, group=g_sltp)
+tp_pct = input.float(10.0, "익절 %", step=0.5, minval=2, maxval=50, group=g_sltp)
+sltp_line_width = input.int(1, "라인 두께", minval=1, maxval=3, group=g_sltp)
+
+var g_display = "표시 옵션"
+show_signals = input.bool(true, "매수/매도 신호 표시", group=g_display)
+label_size_option = input.string("Small", "라벨 크기", options=["Tiny", "Small", "Normal"], group=g_display)
+
+var g_webhook = "웹훅"
+webhook_url = input.string("", "Webhook URL (TradingView Alert용)", group=g_webhook)
+enable_webhook = input.bool(true, "웹훅 활성화", group=g_webhook)
+
+// ═══════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════
+
+clamp(x, lo, hi) => math.max(lo, math.min(hi, x))
+safe_div(a, b, fallback) => nz(b > 0 ? a / b : fallback, fallback)
+
+// ═══════════════════════════════════════════════════════════
+// INDICATORS
+// ═══════════════════════════════════════════════════════════
+
+ema1 = ta.ema(close, ema1_len)
+ema2 = ta.ema(close, ema2_len)
+rsi = ta.rsi(close, rsi_len)
+vol_avg = ta.sma(volume, 20)
+vol_mult = safe_div(volume, vol_avg, 1.0)
+vcp_high = ta.highest(high, vcp_len)
+vcp_low = ta.lowest(low, vcp_len)
+vcp_ratio = safe_div(vcp_high - vcp_low, vcp_high, 0.5)
+
+// ═════════════════════════════════════════════════════════
+// TREND SCORE (간소화)
+// ═══════════════════════════════════════════════════════════
+
+calc_trend_score() =>
+    ema_above = ema1 > ema2 ? 1.0 : 0.0
+    rsi_norm = rsi / 100.0
+    vol_norm = math.min(vol_mult / 3.0, 1.0)
+    vcp_norm = 1.0 - vcp_ratio
+    raw = (alpha * ema_above + beta * rsi_norm + gamma * vol_norm + delta * vcp_norm) * 100.0
+    clamp(raw, 0.0, 100.0)
+
+trend_score = calc_trend_score()
+
+// ═══════════════════════════════════════════════════════════
+// SIGNAL LOGIC (완화된 조건)
+// ═══════════════════════════════════════════════════════════
+
+// 매수 신호: 단순하고 명확한 조건
+buy_signal = barstate.isconfirmed and trend_score >= trend_score_threshold and rsi > rsi_buy_min and vol_mult > vol_mult_min and ema1 > ema2
+
+// 매도 신호: 반대 조건
+sell_signal = barstate.isconfirmed and trend_score <= (100 - trend_score_threshold) and rsi < (100 - rsi_buy_min) and vol_mult > vol_mult_min and ema1 < ema2
+
+// ═══════════════════════════════════════════════════════════
+// SIGNAL TRACKING (배열 기반 - 여러 신호 관리)
+// ═══════════════════════════════════════════════════════════
+
+// 각 신호마다 고유 ID 부여
+var int signal_counter = 0
+
+// 신호 발생 시 카운터 증가
+if buy_signal
+    signal_counter := signal_counter + 1
+    
+if sell_signal
+    signal_counter := signal_counter + 1
+
+// ═══════════════════════════════════════════════════════════
+// VISUALIZATION
+// ═══════════════════════════════════════════════════════════
+
+// EMA 라인
+plot(ema1, "EMA1", color=color.new(color.blue, 0), linewidth=2)
+plot(ema2, "EMA2", color=color.new(color.orange, 0), linewidth=2)
+
+// 라벨 크기 설정
+label_size = label_size_option == "Tiny" ? size.tiny : label_size_option == "Small" ? size.small : size.normal
+
+// 매수 신호 표시 (작은 라벨)
+if show_signals and buy_signal
+    label.new(bar_index, low, "매수", 
+              style=label.style_label_up, 
+              color=color.new(color.green, 0), 
+              textcolor=color.white, 
+              size=label_size)
+    
+    // SL/TP 라인 생성 (각 신호마다 고유)
+    if show_sltp_lines
+        entry_price = close
+        sl_price = entry_price * (1 - sl_pct / 100)
+        tp_price = entry_price * (1 + tp_pct / 100)
+        
+        // 진입가 라인
+        line.new(bar_index, entry_price, bar_index + 20, entry_price, 
+                 color=color.new(color.blue, 0), width=sltp_line_width, style=line.style_solid)
+        
+        // 손절가 라인
+        line.new(bar_index, sl_price, bar_index + 20, sl_price, 
+                 color=color.new(color.red, 0), width=sltp_line_width, style=line.style_dashed)
+        
+        // 익절가 라인
+        line.new(bar_index, tp_price, bar_index + 20, tp_price, 
+                 color=color.new(color.lime, 0), width=sltp_line_width, style=line.style_dashed)
+        
+        // 가격 라벨
+        label.new(bar_index + 10, sl_price, "SL: " + str.tostring(sl_price, "#.##"), 
+                  style=label.style_label_left, color=color.new(color.red, 30), 
+                  textcolor=color.white, size=size.tiny)
+        label.new(bar_index + 10, tp_price, "TP: " + str.tostring(tp_price, "#.##"), 
+                  style=label.style_label_left, color=color.new(color.lime, 30), 
+                  textcolor=color.black, size=size.tiny)
+
+// 매도 신호 표시 (SL/TP 없음 - 인버스 사용)
+if show_signals and sell_signal
+    label.new(bar_index, high, "매도", 
+              style=label.style_label_down, 
+              color=color.new(color.red, 0), 
+              textcolor=color.white, 
+              size=label_size)
+
+// ═══════════════════════════════════════════════════════════
+// INFO PANEL (간소화)
+// ═══════════════════════════════════════════════════════════
+
+var table panel = table.new(position.top_right, 2, 5, border_width=1)
+if barstate.islast
+    table.cell(panel, 0, 0, "Trend Score", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 1, 0, str.tostring(trend_score, "#.0"), bgcolor=color.new(color.gray, 80), text_color=color.white)
+    
+    table.cell(panel, 0, 1, "RSI", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 1, 1, str.tostring(rsi, "#.0"), bgcolor=color.new(color.gray, 80), text_color=color.white)
+    
+    table.cell(panel, 0, 2, "거래량배수", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 1, 2, str.tostring(vol_mult, "#.#") + "x", bgcolor=color.new(color.gray, 80), text_color=color.white)
+    
+    table.cell(panel, 0, 3, "EMA 정렬", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    ema_status = ema1 > ema2 ? "상승" : "하락"
+    ema_color = ema1 > ema2 ? color.new(color.green, 20) : color.new(color.red, 20)
+    table.cell(panel, 1, 3, ema_status, bgcolor=ema_color, text_color=color.white)
+    
+    table.cell(panel, 0, 4, "신호 수", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 1, 4, str.tostring(signal_counter), bgcolor=color.new(color.blue, 20), text_color=color.white)
+
+// ═══════════════════════════════════════════════════════════
+// WEBHOOK ALERT
+// ═══════════════════════════════════════════════════════════
+
+if enable_webhook and buy_signal
+    json_p1 = '{"ts_unix":' + str.tostring(time, "#") + ',"symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '"'
+    json_p2 = ',"action":"BUY","price":' + str.tostring(close, "#.##")
+    json_p3 = ',"trend_score":' + str.tostring(trend_score, "#.##")
+    json_p4 = ',"rsi":' + str.tostring(rsi, "#.##") + ',"vol_mult":' + str.tostring(vol_mult, "#.##")
+    json_p5 = ',"ema1":' + str.tostring(ema1, "#.##") + ',"ema2":' + str.tostring(ema2, "#.##")
+    json_p6 = ',"sl_price":' + str.tostring(close * (1 - sl_pct / 100), "#.##")
+    json_p7 = ',"tp_price":' + str.tostring(close * (1 + tp_pct / 100), "#.##")
+    json_p8 = ',"version":"vmsi_sdm_v3_clean"}'
+    alert_msg = json_p1 + json_p2 + json_p3 + json_p4 + json_p5 + json_p6 + json_p7 + json_p8
+    alert(alert_msg, alert.freq_once_per_bar_close)
+
+if enable_webhook and sell_signal
+    json_p1 = '{"ts_unix":' + str.tostring(time, "#") + ',"symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '"'
+    json_p2 = ',"action":"SELL","price":' + str.tostring(close, "#.##")
+    json_p3 = ',"trend_score":' + str.tostring(trend_score, "#.##")
+    json_p4 = ',"rsi":' + str.tostring(rsi, "#.##") + ',"vol_mult":' + str.tostring(vol_mult, "#.##")
+    json_p5 = ',"ema1":' + str.tostring(ema1, "#.##") + ',"ema2":' + str.tostring(ema2, "#.##")
+    json_p6 = ',"version":"vmsi_sdm_v3_clean"}'
+    alert_msg = json_p1 + json_p2 + json_p3 + json_p4 + json_p5 + json_p6
+    alert(alert_msg, alert.freq_once_per_bar_close)
+
