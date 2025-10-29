@@ -208,3 +208,4 @@ if enable_webhook and sell_signal
     alert_msg = json_p1 + json_p2 + json_p3 + json_p4 + json_p5 + json_p6
     alert(alert_msg, alert.freq_once_per_bar_close)
 
+

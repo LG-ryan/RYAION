@@ -1,38 +1,38 @@
 //@version=6
-strategy("VMSI-SDM v4 Dynamic Strategy", overlay=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1)
+strategy("VMSI-SDM v5 Final Strategy", overlay=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1)
 
-// ═══════════════════════════════════════════════════════════
-// 📌 v4 Dynamic Strategy - ATR 기반 동적 SL/TP
-// ═══════════════════════════════════════════════════════════
+// v5 Final Strategy - Backtesting for Predictive Signals
 
-// ... (파라미터는 indicator와 동일하므로 생략, 핵심만 작성)
+var g_basic = "Basic Settings"
+ema1_len = input.int(20, "EMA1 Period", group=g_basic)
+ema2_len = input.int(50, "EMA2 Period", group=g_basic)
+rsi_len = input.int(14, "RSI Period", group=g_basic)
+vcp_len = input.int(20, "VCP Period", group=g_basic)
+atr_len = input.int(14, "ATR Period", group=g_basic)
 
-var g_basic = "기본 설정"
-ema1_len = input.int(20, "EMA1 기간", group=g_basic)
-ema2_len = input.int(50, "EMA2 기간", group=g_basic)
-rsi_len = input.int(14, "RSI 기간", group=g_basic)
-vcp_len = input.int(20, "VCP 기간", group=g_basic)
-atr_len = input.int(14, "ATR 기간", group=g_basic)
+var g_signal = "Signal Conditions"
+trend_score_buy = input.float(50, "Trend Score Buy", minval=40, maxval=70, step=2, group=g_signal)
+rsi_buy_min = input.float(45, "RSI Min (Buy)", minval=30, maxval=60, step=2, group=g_signal)
+vol_mult_buy = input.float(1.0, "Vol Mult Buy", minval=0.5, maxval=2, step=0.1, group=g_signal)
 
-var g_signal = "신호 조건"
-trend_score_buy = input.float(55, "트렌드 스코어 (매수)", minval=50, maxval=80, step=5, group=g_signal)
-trend_score_sell = input.float(45, "트렌드 스코어 (매도)", minval=20, maxval=50, step=5, group=g_signal)
-rsi_buy_min = input.float(48, "RSI 최소값 (매수)", minval=30, maxval=70, step=2, group=g_signal)
-rsi_sell_max = input.float(52, "RSI 최대값 (매도)", minval=30, maxval=70, step=2, group=g_signal)
-vol_mult_min = input.float(1.2, "거래량배수 최소값", minval=0.5, maxval=3, step=0.1, group=g_signal)
+trend_score_sell = input.float(50, "Trend Score Sell", minval=30, maxval=60, step=2, group=g_signal)
+rsi_sell_max = input.float(55, "RSI Max (Sell)", minval=40, maxval=70, step=2, group=g_signal)
+vol_mult_sell = input.float(1.0, "Vol Mult Sell", minval=0.5, maxval=2, step=0.1, group=g_signal)
 
-var g_weights = "가중치"
-alpha = input.float(0.8, "Alpha (EMA)", step=0.05, group=g_weights)
-beta = input.float(0.35, "Beta (RSI)", step=0.05, group=g_weights)
-gamma = input.float(0.7, "Gamma (Volume)", step=0.05, group=g_weights)
-delta = input.float(0.6, "Delta (VCP)", step=0.05, group=g_weights)
+use_ema_filter = input.bool(false, "Use EMA Filter", group=g_signal)
 
-var g_risk = "리스크 관리 (동적)"
-use_atr_based = input.bool(true, "ATR 기반 SL/TP", group=g_risk)
-atr_sl_mult = input.float(1.5, "ATR SL 배수", step=0.1, minval=0.5, maxval=5, group=g_risk)
-atr_tp_mult = input.float(2.5, "ATR TP 배수", step=0.1, minval=1, maxval=10, group=g_risk)
-fixed_sl_pct = input.float(5.0, "고정 손절 %", step=0.5, minval=1, maxval=20, group=g_risk)
-fixed_tp_pct = input.float(10.0, "고정 익절 %", step=0.5, minval=2, maxval=50, group=g_risk)
+var g_weights = "Weights"
+alpha = input.float(0.8, "Alpha", step=0.05, group=g_weights)
+beta = input.float(0.35, "Beta", step=0.05, group=g_weights)
+gamma = input.float(0.7, "Gamma", step=0.05, group=g_weights)
+delta = input.float(0.6, "Delta", step=0.05, group=g_weights)
+
+var g_risk = "Risk Management"
+use_atr_based = input.bool(true, "ATR-based SL/TP", group=g_risk)
+atr_sl_mult = input.float(1.5, "ATR SL Mult", step=0.1, group=g_risk)
+atr_tp_mult = input.float(2.5, "ATR TP Mult", step=0.1, group=g_risk)
+fixed_sl_pct = input.float(5.0, "Fixed SL %", step=0.5, group=g_risk)
+fixed_tp_pct = input.float(10.0, "Fixed TP %", step=0.5, group=g_risk)
 
 clamp(x, lo, hi) => math.max(lo, math.min(hi, x))
 safe_div(a, b, fallback) => nz(b > 0 ? a / b : fallback, fallback)
@@ -76,10 +76,16 @@ calc_dynamic_sl_tp(signal_type) =>
     
     [sl_distance, tp_distance]
 
-buy_signal = barstate.isconfirmed and trend_score >= trend_score_buy and rsi > rsi_buy_min and vol_mult > vol_mult_min and ema1 > ema2
-sell_signal = barstate.isconfirmed and trend_score <= trend_score_sell and rsi < rsi_sell_max and vol_mult > vol_mult_min and ema1 < ema2
+// Signal Logic (confirmed for execution)
+buy_condition_base = barstate.isconfirmed and trend_score >= trend_score_buy and rsi > rsi_buy_min and vol_mult > vol_mult_buy
+buy_condition_ema = use_ema_filter ? ema1 > ema2 : true
+buy_signal = buy_condition_base and buy_condition_ema
 
-// 매수 진입
+sell_condition_base = barstate.isconfirmed and trend_score <= trend_score_sell and rsi < rsi_sell_max and vol_mult > vol_mult_sell
+sell_condition_ema = use_ema_filter ? ema1 < ema2 : true
+sell_signal = sell_condition_base and sell_condition_ema
+
+// Orders
 if buy_signal and strategy.position_size == 0
     [sl_dist, tp_dist] = calc_dynamic_sl_tp("BUY")
     qty = strategy.equity / close
@@ -88,7 +94,6 @@ if buy_signal and strategy.position_size == 0
     tp_price = close + tp_dist
     strategy.exit("Long Exit", "Long", stop=sl_price, limit=tp_price)
 
-// 매도 진입
 if sell_signal and strategy.position_size == 0
     [sl_dist, tp_dist] = calc_dynamic_sl_tp("SELL")
     qty = strategy.equity / close
@@ -97,7 +102,6 @@ if sell_signal and strategy.position_size == 0
     tp_price = close - tp_dist
     strategy.exit("Short Exit", "Short", stop=sl_price, limit=tp_price)
 
-// 역신호 청산
 if strategy.position_size > 0 and sell_signal
     strategy.close("Long", comment="Reverse")
 
@@ -109,7 +113,7 @@ plot(ema2, "EMA2", color=color.new(color.orange, 0), linewidth=2)
 
 var table panel = table.new(position.top_right, 2, 8, border_width=1)
 if barstate.islast
-    table.cell(panel, 0, 0, "Trend Score", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 0, 0, "Trend", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 0, str.tostring(trend_score, "#.0"), bgcolor=color.new(color.gray, 80), text_color=color.white)
     
     table.cell(panel, 0, 1, "RSI", bgcolor=color.new(color.gray, 20), text_color=color.white)
@@ -118,26 +122,25 @@ if barstate.islast
     table.cell(panel, 0, 2, "ATR", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 2, str.tostring(atr_val, "#.##"), bgcolor=color.new(color.gray, 80), text_color=color.white)
     
-    pos_text = strategy.position_size > 0 ? "롱" : strategy.position_size < 0 ? "숏" : "대기"
+    pos_text = strategy.position_size > 0 ? "Long" : strategy.position_size < 0 ? "Short" : "Flat"
     pos_color = strategy.position_size > 0 ? color.new(color.green, 20) : strategy.position_size < 0 ? color.new(color.red, 20) : color.new(color.gray, 80)
-    table.cell(panel, 0, 3, "포지션", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 0, 3, "Position", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 3, pos_text, bgcolor=pos_color, text_color=color.white)
     
     pnl_pct = strategy.position_size != 0 ? (close - strategy.position_avg_price) / strategy.position_avg_price * 100 : 0
     pnl_color = pnl_pct > 0 ? color.new(color.green, 20) : pnl_pct < 0 ? color.new(color.red, 20) : color.new(color.gray, 80)
-    table.cell(panel, 0, 4, "현재손익", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 0, 4, "P&L", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 4, str.tostring(pnl_pct, "#.##") + "%", bgcolor=pnl_color, text_color=color.white)
     
     total_profit = strategy.netprofit / strategy.initial_capital * 100
     total_color = total_profit > 0 ? color.new(color.green, 20) : total_profit < 0 ? color.new(color.red, 20) : color.new(color.gray, 80)
-    table.cell(panel, 0, 5, "총수익", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 0, 5, "Total", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 5, str.tostring(total_profit, "#.##") + "%", bgcolor=total_color, text_color=color.white)
     
     win_rate = strategy.wintrades > 0 ? strategy.wintrades / (strategy.wintrades + strategy.losstrades) * 100 : 0
-    table.cell(panel, 0, 6, "승률", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 0, 6, "Win Rate", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 6, str.tostring(win_rate, "#.#") + "%", bgcolor=color.new(color.gray, 80), text_color=color.white)
     
-    table.cell(panel, 0, 7, "거래횟수", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 0, 7, "Trades", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 7, str.tostring(strategy.closedtrades), bgcolor=color.new(color.blue, 20), text_color=color.white)
-
 

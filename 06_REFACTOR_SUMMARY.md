@@ -167,3 +167,4 @@ trend_score = (alpha * ema_above + beta * rsi_norm + gamma * vol_norm + delta * 
 **커밋**: `386c3d3` (2025-10-29)
 
 
+

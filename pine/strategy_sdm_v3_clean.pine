@@ -156,3 +156,4 @@ if barstate.islast
     table.cell(panel, 0, 6, "거래횟수", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 6, str.tostring(strategy.closedtrades), bgcolor=color.new(color.blue, 20), text_color=color.white)
 
+
