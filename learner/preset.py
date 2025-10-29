@@ -274,3 +274,4 @@ if __name__ == "__main__":
     print("\n" + manager.generate_pine_script_comment(default_preset))
 
 
+

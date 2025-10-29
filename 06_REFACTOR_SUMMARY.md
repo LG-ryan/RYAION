@@ -166,3 +166,4 @@ trend_score = (alpha * ema_above + beta * rsi_norm + gamma * vol_norm + delta * 
 **작성**: Cursor AI (검토 완료)  
 **커밋**: `386c3d3` (2025-10-29)
 
+

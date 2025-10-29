@@ -7,16 +7,16 @@
 ## 📋 사전 준비
 
 ### ✅ 완료해야 할 것들
-- [x] Render Web Service 배포 (FastAPI 서버)
-- [x] Render PostgreSQL 데이터베이스 생성
-- [x] Streamlit Cloud 대시보드 배포
+- [x] 로컬 FastAPI 서버 실행
+- [x] ngrok 터널 설정
+- [x] 로컬 Streamlit 대시보드 실행
 - [x] Indicator Pine Script 업로드 (v2.1)
 - [ ] **TradingView Alert 설정** ← 지금 이 단계!
 
 ### 📌 필요한 정보
-1. **Webhook URL**: Render Web Service URL
-   - 형식: `https://ryaion.onrender.com/webhook/tv`
-   - Render 대시보드에서 확인 가능
+1. **Webhook URL**: ngrok Public URL
+   - 형식: `https://abc123.ngrok-free.app/webhook/tv`
+   - http://localhost:4040에서 확인 (ngrok 실행 후)
 
 ---
 

@@ -74,4 +74,11 @@ tmp/
 # Streamlit
 .streamlit/secrets.toml
 
+# ngrok
+ngrok.exe
+ngrok
+*.ngrok
+temp_ngrok.json
+
+
 
