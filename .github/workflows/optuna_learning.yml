@@ -31,6 +31,7 @@ jobs:
       working-directory: ./vmsi-sdm
       env:
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        PYTHONPATH: ${{ github.workspace }}/vmsi-sdm
       run: |
         echo "[INFO] Starting Optuna learning loop..."
         python learner/tune.py --trials 50 --timeout 3600
