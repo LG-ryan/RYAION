@@ -10,9 +10,6 @@ jobs:
   learn:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    defaults:
-      run:
-        working-directory: vmsi-sdm
     
     steps:
     - name: Checkout code
@@ -33,10 +30,6 @@ jobs:
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
       run: |
         echo "[INFO] Starting Optuna learning loop..."
-        echo "[DEBUG] Current directory: $(pwd)"
-        echo "[DEBUG] Files: $(ls -la)"
-        cd $GITHUB_WORKSPACE/vmsi-sdm
-        echo "[DEBUG] Changed to: $(pwd)"
         python learner/tune.py --trials 50 --timeout 3600
     
     - name: Upload learning results
@@ -45,8 +38,8 @@ jobs:
       with:
         name: learning-results-${{ github.run_number }}
         path: |
-          vmsi-sdm/presets/preset_B_candidate.json
-          vmsi-sdm/learner/*.db
+          presets/preset_B_candidate.json
+          learner/*.db
         retention-days: 30
     
     - name: Commit updated presets
