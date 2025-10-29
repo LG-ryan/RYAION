@@ -24,7 +24,7 @@ timeout /t 3 /nobreak > nul
 
 REM 3. Streamlit 대시보드 시작 (백그라운드)
 echo [3/3] Starting Streamlit dashboard...
-start "Streamlit" cmd /k "streamlit run dashboard\app.py --server.port 8501"
+start "Streamlit" cmd /k "python -m streamlit run dashboard\app.py --server.port 8501"
 timeout /t 3 /nobreak > nul
 
 echo.
