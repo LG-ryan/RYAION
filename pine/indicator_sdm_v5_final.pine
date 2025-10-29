@@ -55,8 +55,10 @@ sltp_extend_bars = input.int(20, "SL/TP Line Extension", minval=5, maxval=100, g
 var g_display = "Display Options"
 show_buy_signals = input.bool(true, "Show Buy Signals", group=g_display)
 show_sell_signals = input.bool(true, "Show Sell Signals", group=g_display)
+show_watch_signals = input.bool(true, "Show Watch Signals", group=g_display)
 show_signal_numbers = input.bool(true, "Show Signal Numbers", group=g_display)
 label_size_option = input.string("Small", "Label Size", options=["Tiny", "Small", "Normal"], group=g_display)
+use_confirmed_only = input.bool(false, "Confirmed Signals Only", group=g_display, tooltip="ON = only after bar close")
 
 var g_webhook = "Webhook"
 enable_webhook = input.bool(true, "Enable Webhook", group=g_webhook)
@@ -123,15 +125,25 @@ calc_dynamic_sl_tp(signal_type) =>
 // SIGNAL LOGIC (PREDICTIVE + RELAXED)
 // ═══════════════════════════════════════════════════════════
 
+// 시간 조건 (예측 모드 vs 확정 모드)
+time_condition = use_confirmed_only ? barstate.isconfirmed : true
+
 // 매수 신호 (완화 + EMA 선택적)
 buy_condition_base = trend_score >= trend_score_buy and rsi > rsi_buy_min and vol_mult > vol_mult_buy
 buy_condition_ema = use_ema_filter ? ema1 > ema2 : true
-buy_signal = barstate.islast and buy_condition_base and buy_condition_ema
+buy_signal = time_condition and buy_condition_base and buy_condition_ema
 
 // 매도 신호 (대폭 완화 + EMA 제거 가능)
 sell_condition_base = trend_score <= trend_score_sell and rsi < rsi_sell_max and vol_mult > vol_mult_sell
 sell_condition_ema = use_ema_filter ? ema1 < ema2 : true
-sell_signal = barstate.islast and sell_condition_base and sell_condition_ema
+sell_signal = time_condition and sell_condition_base and sell_condition_ema
+
+// 중립 신호 (WATCH)
+watch_up_condition = trend_score >= (trend_score_buy - 5) and trend_score < trend_score_buy and rsi > (rsi_buy_min - 5) and vol_mult > (vol_mult_buy * 0.8)
+watch_up_signal = time_condition and watch_up_condition and not buy_signal and not sell_signal
+
+watch_down_condition = trend_score <= (trend_score_sell + 5) and trend_score > trend_score_sell and rsi < (rsi_sell_max + 5) and vol_mult > (vol_mult_sell * 0.8)
+watch_down_signal = time_condition and watch_down_condition and not buy_signal and not sell_signal
 
 // ═══════════════════════════════════════════════════════════
 // SIGNAL TRACKING
@@ -139,6 +151,8 @@ sell_signal = barstate.islast and sell_condition_base and sell_condition_ema
 
 var int buy_counter = 0
 var int sell_counter = 0
+var int watch_up_counter = 0
+var int watch_down_counter = 0
 var int total_signals = 0
 
 if buy_signal
@@ -148,6 +162,12 @@ if buy_signal
 if sell_signal
     sell_counter := sell_counter + 1
     total_signals := total_signals + 1
+
+if watch_up_signal
+    watch_up_counter := watch_up_counter + 1
+    
+if watch_down_signal
+    watch_down_counter := watch_down_counter + 1
 
 // ═══════════════════════════════════════════════════════════
 // VISUALIZATION
@@ -235,11 +255,43 @@ if show_sell_signals and sell_signal
     
     // 매도는 인버스용이므로 SL/TP 라인 표시 안 함 (옵션)
 
+// WATCH UP 신호 표시
+if show_watch_signals and watch_up_signal
+    label_text = show_signal_numbers ? "W↑#" + str.tostring(watch_up_counter) : "Watch↑"
+    tooltip_text = "Watch Up Signal #" + str.tostring(watch_up_counter) + "\n" +
+                   "Price: " + str.tostring(close, "#.##") + "\n" +
+                   "RSI: " + str.tostring(rsi, "#.#") + " | Vol: " + str.tostring(vol_mult, "#.#") + "x\n" +
+                   "Trend: " + str.tostring(trend_score, "#.#") + "\n" +
+                   "[Near Buy Condition]"
+    
+    label.new(bar_index, low, label_text, 
+              style=label.style_label_up, 
+              color=color.new(color.blue, 0), 
+              textcolor=color.white, 
+              size=label_size,
+              tooltip=tooltip_text)
+
+// WATCH DOWN 신호 표시
+if show_watch_signals and watch_down_signal
+    label_text = show_signal_numbers ? "W↓#" + str.tostring(watch_down_counter) : "Watch↓"
+    tooltip_text = "Watch Down Signal #" + str.tostring(watch_down_counter) + "\n" +
+                   "Price: " + str.tostring(close, "#.##") + "\n" +
+                   "RSI: " + str.tostring(rsi, "#.#") + " | Vol: " + str.tostring(vol_mult, "#.#") + "x\n" +
+                   "Trend: " + str.tostring(trend_score, "#.#") + "\n" +
+                   "[Near Sell Condition]"
+    
+    label.new(bar_index, high, label_text, 
+              style=label.style_label_down, 
+              color=color.new(color.orange, 0), 
+              textcolor=color.white, 
+              size=label_size,
+              tooltip=tooltip_text)
+
 // ═══════════════════════════════════════════════════════════
 // INFO PANEL (REAL-TIME)
 // ═══════════════════════════════════════════════════════════
 
-var table panel = table.new(position.top_right, 2, 9, border_width=1)
+var table panel = table.new(position.top_right, 2, 11, border_width=1)
 if true
     table.cell(panel, 0, 0, "Price", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 0, str.tostring(close, "#.##"), bgcolor=color.new(color.gray, 80), text_color=color.white)
@@ -270,8 +322,15 @@ if true
     table.cell(panel, 0, 7, "Sell", bgcolor=color.new(color.gray, 20), text_color=color.white)
     table.cell(panel, 1, 7, str.tostring(sell_counter), bgcolor=color.new(color.red, 20), text_color=color.white)
     
-    table.cell(panel, 0, 8, "Mode", bgcolor=color.new(color.gray, 20), text_color=color.white)
-    table.cell(panel, 1, 8, "PREDICT", bgcolor=color.new(color.purple, 20), text_color=color.white)
+    table.cell(panel, 0, 8, "Watch↑", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 1, 8, str.tostring(watch_up_counter), bgcolor=color.new(color.blue, 20), text_color=color.white)
+    
+    table.cell(panel, 0, 9, "Watch↓", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    table.cell(panel, 1, 9, str.tostring(watch_down_counter), bgcolor=color.new(color.orange, 20), text_color=color.white)
+    
+    table.cell(panel, 0, 10, "Mode", bgcolor=color.new(color.gray, 20), text_color=color.white)
+    mode_text = use_confirmed_only ? "CONFIRM" : "REAL-TIME"
+    table.cell(panel, 1, 10, mode_text, bgcolor=color.new(color.purple, 20), text_color=color.white)
 
 // ═══════════════════════════════════════════════════════════
 // WEBHOOK ALERT

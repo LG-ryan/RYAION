@@ -40,11 +40,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# UX/UI 개선 다크모드 CSS (v2.1 - 2025-10-29 감리 적용)
+# UX/UI 개선 다크모드 CSS (v3.0 - 2025-10-29 전면 개선)
 st.markdown("""
 <style>
     /* ════════════════════════════════════════════════════════
-       VMSI-SDM Dashboard - Dark Mode v2.1 (UX/UI Improved)
+       VMSI-SDM Dashboard - Dark Mode v3.0 (Professional UX)
     ════════════════════════════════════════════════════════ */
     
     /* ──── 1. 전체 레이아웃 ──── */
@@ -59,89 +59,106 @@ st.markdown("""
         background-color: #0e1117;
     }
     
-    /* ──── 2. 타이포그래피 ──── */
+    /* ──── 2. 타이포그래피 (통일된 폰트 계층) ──── */
     * {
-        font-family: 'Segoe UI', 'Malgun Gothic', 'Arial', sans-serif !important;
+        font-family: 'Inter', 'Pretendard', 'Segoe UI', 'Malgun Gothic', 'Arial', sans-serif !important;
     }
     
     h1 {
         color: #58a6ff !important;
-        font-size: 2.5rem !important;
-        font-weight: 800 !important;
-        margin-bottom: 0.5rem !important;
-        text-shadow: none;
+        font-size: 2.2rem !important;
+        font-weight: 700 !important;
+        margin-bottom: 0.8rem !important;
+        letter-spacing: -0.02em;
     }
     
     h2 {
         color: #79c0ff !important;
-        font-size: 2rem !important;
-        font-weight: 700 !important;
+        font-size: 1.75rem !important;
+        font-weight: 600 !important;
         margin-top: 2rem !important;
-        padding-bottom: 0.8rem;
-        border-bottom: 2px solid #1f6feb;
+        margin-bottom: 1rem !important;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #21262d;
     }
     
     h3 {
         color: #a5d6ff !important;
-        font-size: 1.5rem !important;
+        font-size: 1.35rem !important;
         font-weight: 600 !important;
-        margin-top: 1.5rem !important;
+        margin-top: 1.2rem !important;
+        margin-bottom: 0.8rem !important;
+    }
+    
+    h4 {
+        color: #c9d1d9 !important;
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        margin-top: 1rem !important;
+        margin-bottom: 0.6rem !important;
     }
     
     p, span, div, label {
         color: #e6edf3 !important;
-        font-size: 1.05rem !important;
+        font-size: 0.95rem !important;
         line-height: 1.6;
     }
     
-    /* ──── 3. 메트릭 카드 ──── */
+    /* ──── 3. 메트릭 카드 (개선된 시각적 계층) ──── */
     [data-testid="stMetric"] {
-        background-color: #161b22;
+        background: linear-gradient(135deg, #161b22 0%, #1c2128 100%);
         padding: 1.5rem;
-        border-radius: 12px;
+        border-radius: 10px;
         border: 1px solid #30363d;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        transition: all 0.2s ease;
+    }
+    
+    [data-testid="stMetric"]:hover {
+        border-color: #484f58;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     }
     
     [data-testid="stMetricValue"] {
-        font-size: 2.5rem !important;
-        font-weight: 800 !important;
+        font-size: 2.2rem !important;
+        font-weight: 700 !important;
         color: #58a6ff !important;
     }
     
     [data-testid="stMetricLabel"] {
-        font-size: 1.1rem !important;
-        font-weight: 600 !important;
+        font-size: 0.9rem !important;
+        font-weight: 500 !important;
         color: #9aa2af !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
     
     [data-testid="stMetricDelta"] {
-        font-size: 1rem !important;
+        font-size: 0.95rem !important;
         font-weight: 600 !important;
     }
     
-    /* ──── 4. 버튼 ──── */
+    /* ──── 4. 버튼 (프로페셔널 스타일) ──── */
     .stButton button {
-        background: linear-gradient(135deg, #1f6feb 0%, #58a6ff 100%);
+        background: linear-gradient(135deg, #1f6feb 0%, #1a5bdb 100%);
         color: white !important;
-        font-weight: 700 !important;
-        font-size: 1.1rem !important;
-        border-radius: 10px;
-        padding: 0.8rem 2.5rem;
+        font-weight: 600 !important;
+        font-size: 1rem !important;
+        border-radius: 8px;
+        padding: 0.75rem 2rem;
         border: none;
-        box-shadow: 0 4px 12px rgba(31, 111, 235, 0.3);
-        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(31, 111, 235, 0.25);
+        transition: all 0.2s ease;
     }
     
     .stButton button:hover {
-        background: linear-gradient(135deg, #1a56db 0%, #4a96e6 100%);
+        background: linear-gradient(135deg, #1a56db 0%, #1548c4 100%);
         transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(31, 111, 235, 0.5);
+        box-shadow: 0 4px 12px rgba(31, 111, 235, 0.35);
     }
     
-    .stButton button:focus {
-        outline: 2px solid #58a6ff;
-        outline-offset: 2px;
+    .stButton button:active {
+        transform: translateY(0);
     }
     
     /* ──── 5. 사이드바 ──── */
@@ -154,62 +171,76 @@ st.markdown("""
         color: #e6edf3 !important;
     }
     
-    /* ──── 6. 탭 ──── */
+    [data-testid="stSidebar"] h2 {
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    /* ──── 6. 탭 (깔끔한 디자인) ──── */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 1rem;
-        background-color: #161b22;
-        padding: 0.5rem;
-        border-radius: 10px;
+        gap: 0.5rem;
+        background-color: transparent;
+        padding: 0;
+        border-bottom: 2px solid #21262d;
     }
     
     .stTabs [data-baseweb="tab"] {
-        font-size: 1.2rem !important;
-        font-weight: 700 !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
         color: #9aa2af !important;
-        padding: 1rem 2rem;
-        border-radius: 8px;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0;
         transition: all 0.2s ease;
+        background: transparent !important;
     }
     
     .stTabs [data-baseweb="tab"]:hover {
-        background-color: #21262d;
         color: #c9d1d9 !important;
     }
     
     .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background-color: #1f6feb !important;
-        color: white !important;
-        border-bottom: 3px solid #58a6ff;
+        background: transparent !important;
+        color: #58a6ff !important;
+        border-bottom: 3px solid #1f6feb !important;
     }
     
-    /* ──── 7. 데이터프레임 ──── */
+    /* ──── 7. 데이터프레임 (테이블 스타일 개선) ──── */
     [data-testid="stDataFrame"] {
         background-color: #0d1117;
         border: 1px solid #30363d;
         border-radius: 8px;
+        overflow: hidden;
     }
     
     [data-testid="stDataFrame"] * {
         color: #e6edf3 !important;
-        font-size: 1rem !important;
+        font-size: 0.9rem !important;
     }
     
     thead tr th {
         background-color: #161b22 !important;
-        color: #58a6ff !important;
-        font-weight: 700 !important;
-        font-size: 1rem !important;
-        border-bottom: 2px solid #1f6feb !important;
+        color: #9aa2af !important;
+        font-weight: 600 !important;
+        font-size: 0.85rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 2px solid #21262d !important;
         padding: 0.75rem !important;
     }
     
     tbody tr {
         background-color: #0d1117 !important;
         border-bottom: 1px solid #21262d !important;
+        transition: background-color 0.15s ease;
     }
     
     tbody tr:hover {
-        background-color: #21262d !important;
+        background-color: #161b22 !important;
+    }
+    
+    tbody td {
+        padding: 0.75rem !important;
     }
     
     /* ──── 8. 입력 필드 ──── */
@@ -217,81 +248,79 @@ st.markdown("""
         background-color: #0d1117 !important;
         color: #e6edf3 !important;
         border: 1px solid #30363d !important;
-        border-radius: 8px !important;
-        padding: 0.5rem !important;
-        font-size: 1rem !important;
-        transition: border-color 0.2s ease;
+        border-radius: 6px !important;
+        padding: 0.6rem !important;
+        font-size: 0.95rem !important;
+        transition: all 0.2s ease;
     }
     
     input:focus, textarea:focus, select:focus {
         border-color: #1f6feb !important;
         outline: none;
-        box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.3);
+        box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.2);
     }
     
-    /* ──── 9. 슬라이더 ──── */
-    [data-testid="stSlider"] * {
-        color: #e6edf3 !important;
-    }
-    
-    /* ──── 10. 셀렉트박스 ──── */
-    [data-baseweb="select"] {
-        background-color: #0d1117 !important;
-    }
-    
-    /* ──── 11. 정보 박스 ──── */
+    /* ──── 9. 정보 박스 (SVG 아이콘 스타일) ──── */
     .info-box {
-        background-color: rgba(13, 65, 157, 0.3);
-        padding: 1.5rem;
-        border-radius: 10px;
-        border-left: 4px solid #1f6feb;
+        background-color: rgba(13, 65, 157, 0.15);
+        padding: 1.2rem;
+        border-radius: 8px;
+        border-left: 3px solid #1f6feb;
         margin: 1rem 0;
         color: #e6edf3 !important;
     }
     
     .success-box {
-        background-color: rgba(15, 83, 35, 0.3);
-        padding: 1.5rem;
-        border-radius: 10px;
-        border-left: 4px solid #3fb950;
+        background-color: rgba(15, 83, 35, 0.15);
+        padding: 1.2rem;
+        border-radius: 8px;
+        border-left: 3px solid #3fb950;
         margin: 1rem 0;
         color: #e6edf3 !important;
     }
     
     .warning-box {
-        background-color: rgba(108, 57, 6, 0.3);
-        padding: 1.5rem;
-        border-radius: 10px;
-        border-left: 4px solid #f85149;
+        background-color: rgba(108, 57, 6, 0.15);
+        padding: 1.2rem;
+        border-radius: 8px;
+        border-left: 3px solid #f85149;
         margin: 1rem 0;
         color: #e6edf3 !important;
     }
     
-    /* ──── 12. 코드 블록 ──── */
-    code {
-        background-color: #161b22 !important;
-        color: #79c0ff !important;
-        padding: 0.2rem 0.4rem !important;
-        border-radius: 4px !important;
-        font-size: 0.95rem !important;
+    /* ──── 10. SVG 아이콘 스타일 ──── */
+    .icon-inline {
+        display: inline-block;
+        width: 1.2em;
+        height: 1.2em;
+        vertical-align: text-bottom;
+        margin-right: 0.4em;
     }
     
-    pre {
-        background-color: #0d1117 !important;
-        border: 1px solid #30363d !important;
-        border-radius: 8px !important;
-        padding: 1rem !important;
+    /* ──── 11. 섹션 헤더 스타일 ──── */
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #21262d;
     }
     
-    pre code {
-        color: #e6edf3 !important;
+    /* ──── 12. 카드 컨테이너 ──── */
+    .card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin: 1rem 0;
     }
     
     /* ──── 13. 구분선 ──── */
     hr {
         margin: 2rem 0;
         border: none;
-        border-top: 2px solid #30363d;
+        border-top: 1px solid #21262d;
     }
     
     /* ──── 14. Expander ──── */
@@ -301,30 +330,10 @@ st.markdown("""
         border-radius: 8px !important;
     }
     
-    /* ──── 15. Radio 버튼 ──── */
-    [data-testid="stRadio"] label {
-        color: #e6edf3 !important;
-        font-size: 1.1rem !important;
-        font-weight: 600 !important;
-    }
-    
-    /* ──── 16. 접근성 ──── */
+    /* ──── 15. 접근성 ──── */
     *:focus-visible {
         outline: 2px solid #58a6ff;
         outline-offset: 2px;
-    }
-    
-    /* ──── 17. 스크린 리더 전용 ──── */
-    .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border-width: 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -342,7 +351,7 @@ st.markdown("---")
 # 사이드바
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-st.sidebar.header("⚙️ 설정")
+st.sidebar.header("설정")
 
 days_back = st.sidebar.slider("조회 기간 (일)", 1, 90, 30)
 
@@ -354,8 +363,59 @@ signal_filter = st.sidebar.multiselect(
 
 symbol_filter = st.sidebar.text_input("심볼 필터 (예: AAPL)", "")
 
-if st.sidebar.button("🔄 새로고침"):
+if st.sidebar.button("새로고침"):
     st.rerun()
+
+# ──────────────────────────────────────
+# CSV 업로드 섹션
+# ──────────────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.header("📤 데이터 업로드")
+
+uploaded_file = st.sidebar.file_uploader(
+    "CSV 파일 업로드 (TradingView Export)",
+    type=['csv'],
+    help="TradingView에서 내보낸 CSV 파일을 업로드하여 실제 데이터를 추가하세요."
+)
+
+if uploaded_file is not None:
+    if st.sidebar.button("CSV 임포트 시작", type="primary"):
+        with st.spinner("CSV 파일 처리 중..."):
+            try:
+                # CSV 임시 저장
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
+                    tmp.write(uploaded_file.getvalue())
+                    tmp_path = tmp.name
+                
+                # 임포트 스크립트 실행
+                import subprocess
+                result = subprocess.run(
+                    [
+                        "python", 
+                        "tools/import_real_csv.py", 
+                        "--csv", tmp_path,
+                        "--symbol", "SPX",
+                        "--timeframe", "1W",
+                        "--server", "http://localhost:8000/alert"
+                    ],
+                    capture_output=True,
+                    text=True,
+                    cwd=Path(__file__).parent.parent
+                )
+                
+                # 결과 표시
+                if result.returncode == 0:
+                    st.sidebar.success("✅ CSV 임포트 완료!")
+                    st.sidebar.info(result.stdout)
+                else:
+                    st.sidebar.error(f"❌ 임포트 실패: {result.stderr}")
+                
+                # 임시 파일 삭제
+                os.unlink(tmp_path)
+                
+            except Exception as e:
+                st.sidebar.error(f"오류 발생: {e}")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -454,7 +514,7 @@ PLOTLY_DARK_TEMPLATE = dict(
 # 메인 대시보드
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-tab1, tab2, tab3, tab4 = st.tabs(["📊 신호 모니터링", "🔬 A/B 비교", "📈 실험 히스토리", "⚙️ 프리셋 관리"])
+tab1, tab2, tab3, tab4 = st.tabs(["신호 모니터링", "A/B 비교", "실험 히스토리", "프리셋 관리"])
 
 
 # ═══════════════════════════════════════════════════════════
@@ -467,10 +527,10 @@ with tab1:
     df_signals = load_signals(days_back, signal_filter, symbol_filter)
     
     if len(df_signals) == 0:
-        st.warning("⚠️ 선택한 기간에 신호가 없습니다.")
+        st.warning("선택한 기간에 신호가 없습니다.")
     else:
         # ─── 통계 카드 ───
-        st.subheader("📊 전체 통계")
+        st.subheader("전체 통계")
         
         col1, col2, col3, col4, col5 = st.columns(5)
         
@@ -500,7 +560,7 @@ with tab1:
         st.markdown("---")
         
         # ─── 시계열 차트 ───
-        st.subheader("📈 신호 발생 추이")
+        st.subheader("신호 발생 추이")
         
         df_timeline = df_signals.copy()
         df_timeline['date'] = pd.to_datetime(df_timeline['created_at']).dt.date
@@ -521,12 +581,12 @@ with tab1:
         
         if len(df_labeled) > 0:
             st.markdown("---")
-            st.subheader("💰 신호 성과 분석 (10-bar forward)")
+            st.subheader("신호 성과 분석 (10-bar forward)")
             
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("### 🟢 BUY 신호")
+                st.markdown("### BUY 신호")
                 df_buy = df_labeled[df_labeled['signal'] == 'BUY']
                 
                 if len(df_buy) > 0:
@@ -542,7 +602,7 @@ with tab1:
                     st.info("데이터 없음")
             
             with col2:
-                st.markdown("### 🔴 SELL 신호")
+                st.markdown("### SELL 신호")
                 df_sell = df_labeled[df_labeled['signal'] == 'SELL']
                 
                 if len(df_sell) > 0:
@@ -558,7 +618,7 @@ with tab1:
                     st.info("데이터 없음")
             
             with col3:
-                st.markdown("### 📊 전체 통계")
+                st.markdown("### 전체 통계")
                 all_ret = df_labeled['fwd_ret_10'].mean()
                 all_win = (df_labeled['fwd_ret_10'] > 0).mean()
                 subcol1, subcol2 = st.columns(2)
@@ -571,7 +631,7 @@ with tab1:
             
             # ─── 수익률 분포 ───
             st.markdown("---")
-            st.subheader("📉 수익률 분포")
+            st.subheader("수익률 분포")
             
             fig_dist = px.histogram(
                 df_labeled, x='fwd_ret_10', color='signal', nbins=30,
@@ -584,7 +644,22 @@ with tab1:
         
         # ─── 최근 신호 테이블 & 상세 분석 ───
         st.markdown("---")
-        st.subheader("📋 최근 신호 목록 & 상세 분석")
+        st.subheader("최근 신호 목록")
+        
+        # 전체 신호 테이블 (먼저 표시)
+        display_df = df_signals[[
+            'created_at', 'symbol', 'tf', 'signal',
+            'trend_score', 'prob', 'rsi', 'vol_mult', 'fwd_ret_10'
+        ]].head(50).copy()
+        
+        display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+        display_df.columns = ['시각', '심볼', 'TF', '신호', 'TrendScore', 'Prob', 'RSI', 'VolMult', '10-bar 수익률']
+        
+        st.dataframe(display_df, use_container_width=True, height=400)
+        
+        # 상세 분석 섹션
+        st.markdown("---")
+        st.subheader("신호 상세 분석 리포트")
         
         # 신호 선택
         signal_options = []
@@ -595,7 +670,7 @@ with tab1:
         
         if signal_options:
             selected_label = st.selectbox(
-                "🔍 신호를 선택하면 상세 애널리스트 리포트를 확인할 수 있습니다",
+                "신호를 선택하면 상세 애널리스트 리포트를 확인할 수 있습니다",
                 [opt[0] for opt in signal_options],
                 index=0
             )
@@ -633,7 +708,7 @@ with tab1:
                     
                     # 다운로드 버튼
                     st.download_button(
-                        label="📥 리포트 다운로드 (Markdown)",
+                        label="리포트 다운로드 (Markdown)",
                         data=report,
                         file_name=f"signal_report_{signal_obj.symbol}_{signal_obj.signal}_{pd.to_datetime(signal_obj.created_at).strftime('%Y%m%d_%H%M')}.md",
                         mime="text/markdown",
@@ -641,21 +716,6 @@ with tab1:
                     )
                 
                 db.close()
-        
-        # 전체 신호 테이블 (간략 버전)
-        st.markdown("---")
-        st.subheader("📊 전체 신호 목록 (간략)")
-        
-        display_df = df_signals[[
-            'created_at', 'symbol', 'tf', 'signal',
-            'trend_score', 'prob', 'rsi', 'vol_mult', 'fwd_ret_10'
-        ]].head(50).copy()
-        
-        display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
-        display_df.columns = ['시각', '심볼', 'TF', '신호', 'TrendScore', 'Prob', 'RSI', 'VolMult', '10-bar 수익률']
-        
-        with st.expander("📋 전체 목록 보기", expanded=False):
-            st.dataframe(display_df, width="stretch", height=400)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -671,7 +731,7 @@ with tab2:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("🅰️ Current Preset")
+            st.subheader("Current Preset (A)")
             st.markdown(f"**버전:** `{current_preset.get('version', 'N/A')}`")
             
             if 'metrics' in current_preset:
@@ -688,7 +748,7 @@ with tab2:
                 st.json(current_preset.get('params', {}))
         
         with col2:
-            st.subheader("🅱️ Candidate Preset")
+            st.subheader("Candidate Preset (B)")
             st.markdown(f"**버전:** `{candidate_preset.get('version', 'N/A')}`")
             
             if 'metrics' in candidate_preset:
@@ -712,7 +772,7 @@ with tab2:
         st.markdown("---")
         
         # 비교 차트
-        st.subheader("📊 성능 지표 비교")
+        st.subheader("성능 지표 비교")
         
         comparison_data = pd.DataFrame({
             'Metric': ['Profit Factor', 'Win Rate', 'MDD (inverted)'],
@@ -740,14 +800,14 @@ with tab2:
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button("✅ Candidate를 Current로 승격", use_container_width=True, type="primary"):
+            if st.button("Candidate를 Current로 승격", use_container_width=True, type="primary"):
                 manager = PresetManager()
                 if manager.promote_candidate_to_current():
-                    st.success("✓ Candidate가 Current로 승격되었습니다!")
+                    st.success("Candidate가 Current로 승격되었습니다!")
                     st.balloons()
                     st.rerun()
                 else:
-                    st.error("❌ 승격 실패")
+                    st.error("승격 실패")
         
     except Exception as e:
         st.error(f"프리셋 로드 실패: {e}")
@@ -765,7 +825,7 @@ with tab3:
     if len(df_experiments) == 0:
         st.info("실험 기록이 없습니다. Learner를 실행하세요.")
     else:
-        st.subheader("📋 최근 실험 결과")
+        st.subheader("최근 실험 결과")
         
         display_exp = df_experiments.copy()
         display_exp['created_at'] = pd.to_datetime(display_exp['created_at']).dt.strftime('%Y-%m-%d %H:%M')
@@ -774,7 +834,7 @@ with tab3:
         st.dataframe(display_exp, width="stretch", height=400)
         
         st.markdown("---")
-        st.subheader("📈 실험 성능 추이")
+        st.subheader("실험 성능 추이")
         
         fig_exp = make_subplots(rows=2, cols=2, subplot_titles=("Profit Factor", "Max Drawdown", "Win Rate", "PSU 10-bar"))
         
@@ -802,7 +862,7 @@ with tab4:
         current_preset, candidate_preset = load_presets()
         manager = PresetManager()
         
-        st.subheader("📋 Pine Script 파라미터 (복사용)")
+        st.subheader("Pine Script 파라미터 (복사용)")
         
         preset_choice = st.radio("프리셋 선택", ["Current", "Candidate"], horizontal=True)
         
@@ -811,7 +871,7 @@ with tab4:
         
         st.code(pine_code, language="javascript")
         
-        st.markdown('<div class="info-box">💡 위 코드를 복사하여 TradingView Pine Script 지표에 붙여넣으세요.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="info-box">위 코드를 복사하여 TradingView Pine Script 지표에 붙여넣으세요.</div>', unsafe_allow_html=True)
         
     except Exception as e:
         st.error(f"프리셋 로드 실패: {e}")
@@ -824,11 +884,11 @@ with tab4:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #8b949e; padding: 2rem 0;'>
-    <p style='font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem; color: #58a6ff;'>
-        VMSI-SDM v2.0 | 자가학습형 TradingView 지표 시스템
+    <p style='font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; color: #58a6ff;'>
+        VMSI-SDM v3.0 | 자가학습형 TradingView 지표 시스템
     </p>
-    <p style='font-size: 1rem;'>
-        💡 문의: docs/README.md 참조 | 포트: 8501 (Dashboard) / 8000 (API Server)
+    <p style='font-size: 0.9rem;'>
+        문의: docs/README.md 참조 | 포트: 8501 (Dashboard) / 8000 (API Server)
     </p>
 </div>
 """, unsafe_allow_html=True)
