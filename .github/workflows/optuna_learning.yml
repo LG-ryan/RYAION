@@ -28,9 +28,13 @@ jobs:
     - name: Run Optuna learning
       env:
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        PYTHONPATH: ${{ github.workspace }}
       run: |
         echo "[INFO] Starting Optuna learning loop..."
-        python learner/tune.py --trials 50 --timeout 3600
+        echo "[DEBUG] PYTHONPATH=$PYTHONPATH"
+        echo "[DEBUG] Current dir: $(pwd)"
+        echo "[DEBUG] Workspace: ${{ github.workspace }}"
+        python -m learner.tune --trials 50 --timeout 3600
     
     - name: Upload learning results
       if: always()
