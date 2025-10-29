@@ -297,9 +297,10 @@ if __name__ == "__main__":
               f"MDD={result['test_metrics']['mdd']:.1%}")
         
     except ValueError as e:
-        print(f"[ERROR] No data available: {e}")
+        print(f"[INFO] No data available: {e}")
         print("[INFO] Make sure signals are collected from TradingView first")
-        exit(1)
+        print("[INFO] Skipping optimization - will retry when data is available")
+        exit(0)  # 정상 종료 - 데이터 없음은 에러가 아님
     except Exception as e:
         print(f"[ERROR] Optimization failed: {e}")
         import traceback
