@@ -43,6 +43,14 @@ fast_mode = input.bool(false, "Fast Mode (No Hysteresis/Cooldown)", tooltip="활
 // 매크로 데이터 실시간 연동
 use_realtime_macro = input.bool(false, "Use Real-time Macro Data", tooltip="활성화 시 VIX, DXY 등을 실시간으로 가져옴 (느릴 수 있음)", group=g_mode)
 
+// 매크로 심볼 설정
+var g_macro = "매크로 심볼"
+vix_symbol = input.symbol("CBOE:VIX", "VIX Symbol", group=g_macro, tooltip="대안: TVC:VIX, FRED:VIXCLS")
+dxy_symbol = input.symbol("TVC:DXY", "DXY Symbol", group=g_macro, tooltip="대안: CURRENCYCOM:US_DOLLAR_INDEX")
+us10y_symbol = input.symbol("TVC:US10Y", "US10Y Symbol", group=g_macro, tooltip="대안: FRED:DGS10")
+hyg_symbol = input.symbol("AMEX:HYG", "HYG Symbol (High Yield Bond ETF)", group=g_macro)
+ief_symbol = input.symbol("NASDAQ:IEF", "IEF Symbol (Treasury Bond ETF)", group=g_macro)
+
 // 테이블 설정
 var g_table = "테이블 설정"
 table_position = input.string("Top Right", "Panel Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=g_table)
@@ -57,27 +65,34 @@ ema1 = ta.ema(close, ema1_len)
 ema2 = ta.ema(close, ema2_len)
 rsi = ta.rsi(close, rsi_len)
 
+// Volume 안전 처리 (Volume 없는 심볼 대응)
 vol_avg = ta.sma(volume, 20)
-vol_mult = volume / vol_avg
+vol_mult = nz(vol_avg > 0 ? volume / vol_avg : 1.0, 1.0)
 
 // VCP (Volatility Contraction Pattern) - 최근 N봉 고가/저가 범위
 vcp_high = ta.highest(high, vcp_len)
 vcp_low = ta.lowest(low, vcp_len)
-vcp_ratio = (vcp_high - vcp_low) / vcp_high
+vcp_ratio = nz(vcp_high > vcp_low ? (vcp_high - vcp_low) / vcp_high : 0.5, 0.5)
 
-// ATH 거리
+// ATH 거리 (안전 처리)
 ath = ta.highest(high, 252)
-dist_ath = (ath - close) / ath
+dist_ath = nz(ath > 0 ? (ath - close) / ath : 0.0, 0.0)
 
 // ─────────────── 매크로 지표 (실시간 or 시뮬레이션) ───────────────
-vix_val = use_realtime_macro ? request.security("VIX", timeframe.period, close) : 18.4
-dxy_val = use_realtime_macro ? request.security("DXY", timeframe.period, close) : 104.5
-us10y_val = use_realtime_macro ? request.security("US10Y", timeframe.period, close) : 4.5
+// 실시간 데이터 가져오기 (use_realtime_macro=false일 때는 security() 호출 스킵)
+vix_real = use_realtime_macro ? request.security(vix_symbol, timeframe.period, close) : na
+dxy_real = use_realtime_macro ? request.security(dxy_symbol, timeframe.period, close) : na
+us10y_real = use_realtime_macro ? request.security(us10y_symbol, timeframe.period, close) : na
+hyg_real = use_realtime_macro ? request.security(hyg_symbol, timeframe.period, close) : na
+ief_real = use_realtime_macro ? request.security(ief_symbol, timeframe.period, close) : na
 
-// HYG/IEF 비율 (실시간 계산)
-hyg_close = use_realtime_macro ? request.security("HYG", timeframe.period, close) : 79.0
-ief_close = use_realtime_macro ? request.security("IEF", timeframe.period, close) : 95.0
-hygief_ratio = hyg_close / ief_close
+// Fallback to simulation (실시간 데이터 실패 시 시뮬레이션 값 사용)
+vix_val = nz(vix_real, 18.4)
+dxy_val = nz(dxy_real, 104.5)
+us10y_val = nz(us10y_real, 4.5)
+hyg_close = nz(hyg_real, 79.0)
+ief_close = nz(ief_real, 95.0)
+hygief_ratio = nz(ief_close > 0 ? hyg_close / ief_close : 0.83, 0.83)
 
 // 트렌드 변환 (간단화)
 dxy_trend_val = use_realtime_macro ? (ta.ema(dxy_val, 10) > ta.ema(dxy_val, 30) ? 1.0 : -1.0) : -1.0
@@ -92,7 +107,8 @@ ema_above = ema1 > ema2 ? 1.0 : 0.0
 rsi_norm = rsi / 100.0
 vol_norm = math.min(vol_mult / 3.0, 1.0)
 vcp_norm = 1.0 - vcp_ratio
-ath_norm = 1.0 - math.min(dist_ath / 0.2, 1.0)
+// 참고: ath_norm 제거 (계산만 하고 사용하지 않아 혼란 야기)
+// dist_ath는 유지 (alert JSON에서 사용)
 
 trend_score = (alpha * ema_above + beta * rsi_norm + gamma * vol_norm + delta * vcp_norm) * 100.0
 trend_score := math.max(0, math.min(100, trend_score))
@@ -203,25 +219,20 @@ if barstate.islast
     table.cell(panel, 0, 8, "Macro", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
     table.cell(panel, 1, 8, macro_text, bgcolor=macro_color, text_color=color.white, text_size=text_size_value)
 
-// ─────────────── Webhook Alert ───────────────
+// ─────────────── Webhook Alert (표준화된 JSON Schema) ───────────────
+// 참고: webhook_url 입력은 TradingView Alert 설정 UI에서만 사용됨 (코드에서는 사용 안 함)
 if barstate.isconfirmed and enable_webhook and (last_signal == "BUY" or last_signal == "SELL") and bar_index == last_signal_bar
-    // 매크로 트렌드 텍스트 변환
-    dxy_trend_text = dxy_trend_val > 0 ? "up" : (dxy_trend_val < 0 ? "down" : "flat")
-    us10y_trend_text = us10y_trend_val > 0 ? "up" : (us10y_trend_val < 0 ? "down" : "flat")
-    hygief_text = hygief_val > 0 ? "bull" : "bear"
+    // Alert JSON - 표준화된 스키마 (snake_case, 필수 필드)
+    json_p1 = '{"ts_unix":' + str.tostring(time, "#") + ',"symbol":"' + syminfo.ticker + '","timeframe":"' + timeframe.period + '"'
+    json_p2 = ',"action":"' + last_signal + '","price":' + str.tostring(close, "#.##")
+    json_p3 = ',"trend_score":' + str.tostring(trend_score_smooth, "#.##") + ',"prob":' + str.tostring(prob_smooth, "#.####")
+    json_p4 = ',"rsi":' + str.tostring(rsi, "#.##") + ',"vol_mult":' + str.tostring(vol_mult, "#.##")
+    json_p5 = ',"vcp_ratio":' + str.tostring(vcp_ratio, "#.####") + ',"dist_ath":' + str.tostring(dist_ath, "#.####")
+    json_p6 = ',"ema1":' + str.tostring(ema1, "#.##") + ',"ema2":' + str.tostring(ema2, "#.##")
+    json_p7 = ',"bar_state":"close","fast_mode":' + str.tostring(fast_mode) + ',"realtime_macro":' + str.tostring(use_realtime_macro)
+    json_p8 = ',"version":"vmsi_sdm_v2.1"}'
     
-    // JSON 문자열을 명확하게 구분하여 생성
-    json_part1 = '{"symbol":"' + syminfo.ticker + '","tf":"' + timeframe.period + '","t":"' + str.tostring(time) + '","signal":"' + last_signal + '"'
-    json_part2 = ',"features":{"trendScore":' + str.tostring(trend_score_smooth, "#.#") + ',"prob":' + str.tostring(prob_smooth, "#.##")
-    json_part3 = ',"ema20_above_50":' + str.tostring(ema1 > ema2) + ',"rsi":' + str.tostring(rsi, "#.#") + ',"vol_mult":' + str.tostring(vol_mult, "#.#")
-    json_part4 = ',"vcp_ratio":' + str.tostring(vcp_ratio, "#.##") + ',"dist_ath":' + str.tostring(dist_ath, "#.##")
-    json_part5 = ',"macro":{"vix":' + str.tostring(vix_val, "#.#") + ',"dxy":' + str.tostring(dxy_val, "#.#") + ',"dxy_trend":"' + dxy_trend_text + '"'
-    json_part6 = ',"us10y":' + str.tostring(us10y_val, "#.#") + ',"us10y_trend":"' + us10y_trend_text + '","hyg_ief":"' + hygief_text + '"}}'
-    json_part7 = ',"params":{"ema1":' + str.tostring(ema1_len) + ',"ema2":' + str.tostring(ema2_len) + ',"rsi":' + str.tostring(rsi_len)
-    json_part8 = ',"vcp":' + str.tostring(vcp_len) + ',"alpha":' + str.tostring(alpha, "#.##") + ',"beta":' + str.tostring(beta, "#.##")
-    json_part9 = ',"gamma":' + str.tostring(gamma, "#.##") + ',"delta":' + str.tostring(delta, "#.##") + ',"epsilon":' + str.tostring(epsilon, "#.##")
-    json_part10 = ',"fast_mode":' + str.tostring(fast_mode) + ',"realtime_macro":' + str.tostring(use_realtime_macro) + '}}'
+    alert_msg = json_p1 + json_p2 + json_p3 + json_p4 + json_p5 + json_p6 + json_p7 + json_p8
     
-    alert_msg = json_part1 + json_part2 + json_part3 + json_part4 + json_part5 + json_part6 + json_part7 + json_part8 + json_part9 + json_part10
-    
+    // 확정봉 종료 시 한 번만 알림
     alert(alert_msg, alert.freq_once_per_bar_close)

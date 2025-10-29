@@ -38,6 +38,14 @@ fast_mode = input.bool(false, "Fast Mode (No Hysteresis/Cooldown)", tooltip="활
 
 use_realtime_macro = input.bool(false, "Use Real-time Macro Data", group=g_mode)
 
+// 매크로 심볼 설정
+var g_macro = "매크로 심볼"
+vix_symbol = input.symbol("CBOE:VIX", "VIX Symbol", group=g_macro, tooltip="대안: TVC:VIX, FRED:VIXCLS")
+dxy_symbol = input.symbol("TVC:DXY", "DXY Symbol", group=g_macro, tooltip="대안: CURRENCYCOM:US_DOLLAR_INDEX")
+us10y_symbol = input.symbol("TVC:US10Y", "US10Y Symbol", group=g_macro, tooltip="대안: FRED:DGS10")
+hyg_symbol = input.symbol("AMEX:HYG", "HYG Symbol (High Yield Bond ETF)", group=g_macro)
+ief_symbol = input.symbol("NASDAQ:IEF", "IEF Symbol (Treasury Bond ETF)", group=g_macro)
+
 // 테이블 설정
 var g_table = "테이블 설정"
 table_position = input.string("Top Right", "Panel Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=g_table)
@@ -67,23 +75,33 @@ ema1 = ta.ema(close, ema1_len)
 ema2 = ta.ema(close, ema2_len)
 rsi = ta.rsi(close, rsi_len)
 
+// Volume 안전 처리 (Volume 없는 심볼 대응)
 vol_avg = ta.sma(volume, 20)
-vol_mult = volume / vol_avg
+vol_mult = nz(vol_avg > 0 ? volume / vol_avg : 1.0, 1.0)
 
 vcp_high = ta.highest(high, vcp_len)
 vcp_low = ta.lowest(low, vcp_len)
-vcp_ratio = (vcp_high - vcp_low) / vcp_high
+vcp_ratio = nz(vcp_high > vcp_low ? (vcp_high - vcp_low) / vcp_high : 0.5, 0.5)
 
+// ATH 거리 (안전 처리)
 ath = ta.highest(high, 252)
-dist_ath = (ath - close) / ath
+dist_ath = nz(ath > 0 ? (ath - close) / ath : 0.0, 0.0)
 
 // 매크로 (실시간 or 시뮬레이션)
-vix_val = use_realtime_macro ? request.security("VIX", timeframe.period, close) : 18.4
-dxy_val = use_realtime_macro ? request.security("DXY", timeframe.period, close) : 104.5
-us10y_val = use_realtime_macro ? request.security("US10Y", timeframe.period, close) : 4.5
-hyg_close = use_realtime_macro ? request.security("HYG", timeframe.period, close) : 79.0
-ief_close = use_realtime_macro ? request.security("IEF", timeframe.period, close) : 95.0
-hygief_ratio = hyg_close / ief_close
+// 실시간 데이터 가져오기 (use_realtime_macro=false일 때는 security() 호출 스킵)
+vix_real = use_realtime_macro ? request.security(vix_symbol, timeframe.period, close) : na
+dxy_real = use_realtime_macro ? request.security(dxy_symbol, timeframe.period, close) : na
+us10y_real = use_realtime_macro ? request.security(us10y_symbol, timeframe.period, close) : na
+hyg_real = use_realtime_macro ? request.security(hyg_symbol, timeframe.period, close) : na
+ief_real = use_realtime_macro ? request.security(ief_symbol, timeframe.period, close) : na
+
+// Fallback to simulation (실시간 데이터 실패 시 시뮬레이션 값 사용)
+vix_val = nz(vix_real, 18.4)
+dxy_val = nz(dxy_real, 104.5)
+us10y_val = nz(us10y_real, 4.5)
+hyg_close = nz(hyg_real, 79.0)
+ief_close = nz(ief_real, 95.0)
+hygief_ratio = nz(ief_close > 0 ? hyg_close / ief_close : 0.83, 0.83)
 
 dxy_trend_val = use_realtime_macro ? (ta.ema(dxy_val, 10) > ta.ema(dxy_val, 30) ? 1.0 : -1.0) : -1.0
 us10y_trend_val = use_realtime_macro ? (ta.ema(us10y_val, 10) > ta.ema(us10y_val, 30) ? 1.0 : -1.0) : 0.0
@@ -96,6 +114,8 @@ ema_above = ema1 > ema2 ? 1.0 : 0.0
 rsi_norm = rsi / 100.0
 vol_norm = math.min(vol_mult / 3.0, 1.0)
 vcp_norm = 1.0 - vcp_ratio
+// 참고: ath_norm 제거 (계산만 하고 사용하지 않아 혼란 야기)
+// dist_ath는 유지 (백테스트 분석용)
 
 trend_score = (alpha * ema_above + beta * rsi_norm + gamma * vol_norm + delta * vcp_norm) * 100.0
 trend_score := math.max(0, math.min(100, trend_score))
