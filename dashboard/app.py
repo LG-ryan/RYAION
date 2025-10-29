@@ -13,9 +13,13 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
-# Streamlit Cloud Secrets를 환경변수로 설정
-if "DATABASE_URL" in st.secrets:
-    os.environ["DATABASE_URL"] = st.secrets["DATABASE_URL"]
+# Streamlit Cloud Secrets를 환경변수로 설정 (로컬에서는 스킵)
+try:
+    if "DATABASE_URL" in st.secrets:
+        os.environ["DATABASE_URL"] = st.secrets["DATABASE_URL"]
+except FileNotFoundError:
+    # 로컬 환경: SQLite 사용 (DATABASE_URL 불필요)
+    pass
 
 # 상위 디렉토리를 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
