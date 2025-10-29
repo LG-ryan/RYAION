@@ -1,0 +1,56 @@
+name: Optuna Learning Loop
+
+on:
+  schedule:
+    # 매일 오전 2시 UTC (한국 시간 11시)
+    - cron: '0 2 * * *'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run Optuna learning
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      run: |
+        echo "[INFO] Starting Optuna learning loop..."
+        python learner/tune.py --trials 50 --timeout 3600
+    
+    - name: Upload learning results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: learning-results-${{ github.run_number }}
+        path: |
+          presets/preset_B_candidate.json
+          learner/*.db
+        retention-days: 30
+    
+    - name: Commit updated presets
+      if: success()
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add presets/preset_B_candidate.json
+        git diff --quiet && git diff --staged --quiet || git commit -m "Auto: Update preset_B_candidate from learning loop [skip ci]"
+        git push
+      continue-on-error: true
+
+

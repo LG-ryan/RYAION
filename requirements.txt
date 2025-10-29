@@ -1,0 +1,36 @@
+# VMSI-SDM 프로젝트 의존성 패키지
+# Python 3.14 호환 버전
+
+# Web Framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.24.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+alembic>=1.12.0
+
+# Data Processing
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Machine Learning / Optimization
+optuna>=3.4.0
+scikit-learn>=1.3.0
+
+# Market Data
+yfinance>=0.2.32
+
+# Visualization & Dashboard
+streamlit>=1.28.0
+matplotlib>=3.8.0
+plotly>=5.18.0
+
+# Utilities
+pydantic>=2.5.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Code Quality (Optional)
+black>=23.11.0
+ruff>=0.1.6

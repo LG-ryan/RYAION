@@ -1,0 +1,764 @@
+"""
+VMSI-SDM Streamlit Dashboard (Dark Mode)
+실시간 신호 모니터링 및 A/B 테스트 비교 대시보드
+"""
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import sys
+from pathlib import Path
+from datetime import datetime, timedelta, timezone
+
+# 상위 디렉토리를 경로에 추가
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from server.db import SessionLocal, Signal, Label, Experiment
+from learner.preset import PresetManager
+from learner.metrics import PerformanceMetrics
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 페이지 설정
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+st.set_page_config(
+    page_title="VMSI-SDM Dashboard",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# UX/UI 개선 다크모드 CSS (v2.1 - 2025-10-29 감리 적용)
+st.markdown("""
+<style>
+    /* ════════════════════════════════════════════════════════
+       VMSI-SDM Dashboard - Dark Mode v2.1 (UX/UI Improved)
+    ════════════════════════════════════════════════════════ */
+    
+    /* ──── 1. 전체 레이아웃 ──── */
+    .main {
+        background-color: #0e1117;
+        color: #e6edf3;
+        padding: 2rem;
+    }
+    
+    [data-testid="stAppViewContainer"],
+    [data-testid="stHeader"] {
+        background-color: #0e1117;
+    }
+    
+    /* ──── 2. 타이포그래피 ──── */
+    * {
+        font-family: 'Segoe UI', 'Malgun Gothic', 'Arial', sans-serif !important;
+    }
+    
+    h1 {
+        color: #58a6ff !important;
+        font-size: 2.5rem !important;
+        font-weight: 800 !important;
+        margin-bottom: 0.5rem !important;
+        text-shadow: none;
+    }
+    
+    h2 {
+        color: #79c0ff !important;
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        margin-top: 2rem !important;
+        padding-bottom: 0.8rem;
+        border-bottom: 2px solid #1f6feb;
+    }
+    
+    h3 {
+        color: #a5d6ff !important;
+        font-size: 1.5rem !important;
+        font-weight: 600 !important;
+        margin-top: 1.5rem !important;
+    }
+    
+    p, span, div, label {
+        color: #e6edf3 !important;
+        font-size: 1.05rem !important;
+        line-height: 1.6;
+    }
+    
+    /* ──── 3. 메트릭 카드 ──── */
+    [data-testid="stMetric"] {
+        background-color: #161b22;
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid #30363d;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+    
+    [data-testid="stMetricValue"] {
+        font-size: 2.5rem !important;
+        font-weight: 800 !important;
+        color: #58a6ff !important;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        color: #9aa2af !important;
+    }
+    
+    [data-testid="stMetricDelta"] {
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+    }
+    
+    /* ──── 4. 버튼 ──── */
+    .stButton button {
+        background: linear-gradient(135deg, #1f6feb 0%, #58a6ff 100%);
+        color: white !important;
+        font-weight: 700 !important;
+        font-size: 1.1rem !important;
+        border-radius: 10px;
+        padding: 0.8rem 2.5rem;
+        border: none;
+        box-shadow: 0 4px 12px rgba(31, 111, 235, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .stButton button:hover {
+        background: linear-gradient(135deg, #1a56db 0%, #4a96e6 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(31, 111, 235, 0.5);
+    }
+    
+    .stButton button:focus {
+        outline: 2px solid #58a6ff;
+        outline-offset: 2px;
+    }
+    
+    /* ──── 5. 사이드바 ──── */
+    [data-testid="stSidebar"] {
+        background-color: #161b22;
+        border-right: 1px solid #30363d;
+    }
+    
+    [data-testid="stSidebar"] * {
+        color: #e6edf3 !important;
+    }
+    
+    /* ──── 6. 탭 ──── */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 1rem;
+        background-color: #161b22;
+        padding: 0.5rem;
+        border-radius: 10px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        font-size: 1.2rem !important;
+        font-weight: 700 !important;
+        color: #9aa2af !important;
+        padding: 1rem 2rem;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #21262d;
+        color: #c9d1d9 !important;
+    }
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #1f6feb !important;
+        color: white !important;
+        border-bottom: 3px solid #58a6ff;
+    }
+    
+    /* ──── 7. 데이터프레임 ──── */
+    [data-testid="stDataFrame"] {
+        background-color: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+    }
+    
+    [data-testid="stDataFrame"] * {
+        color: #e6edf3 !important;
+        font-size: 1rem !important;
+    }
+    
+    thead tr th {
+        background-color: #161b22 !important;
+        color: #58a6ff !important;
+        font-weight: 700 !important;
+        font-size: 1rem !important;
+        border-bottom: 2px solid #1f6feb !important;
+        padding: 0.75rem !important;
+    }
+    
+    tbody tr {
+        background-color: #0d1117 !important;
+        border-bottom: 1px solid #21262d !important;
+    }
+    
+    tbody tr:hover {
+        background-color: #21262d !important;
+    }
+    
+    /* ──── 8. 입력 필드 ──── */
+    input, textarea, select {
+        background-color: #0d1117 !important;
+        color: #e6edf3 !important;
+        border: 1px solid #30363d !important;
+        border-radius: 8px !important;
+        padding: 0.5rem !important;
+        font-size: 1rem !important;
+        transition: border-color 0.2s ease;
+    }
+    
+    input:focus, textarea:focus, select:focus {
+        border-color: #1f6feb !important;
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.3);
+    }
+    
+    /* ──── 9. 슬라이더 ──── */
+    [data-testid="stSlider"] * {
+        color: #e6edf3 !important;
+    }
+    
+    /* ──── 10. 셀렉트박스 ──── */
+    [data-baseweb="select"] {
+        background-color: #0d1117 !important;
+    }
+    
+    /* ──── 11. 정보 박스 ──── */
+    .info-box {
+        background-color: rgba(13, 65, 157, 0.3);
+        padding: 1.5rem;
+        border-radius: 10px;
+        border-left: 4px solid #1f6feb;
+        margin: 1rem 0;
+        color: #e6edf3 !important;
+    }
+    
+    .success-box {
+        background-color: rgba(15, 83, 35, 0.3);
+        padding: 1.5rem;
+        border-radius: 10px;
+        border-left: 4px solid #3fb950;
+        margin: 1rem 0;
+        color: #e6edf3 !important;
+    }
+    
+    .warning-box {
+        background-color: rgba(108, 57, 6, 0.3);
+        padding: 1.5rem;
+        border-radius: 10px;
+        border-left: 4px solid #f85149;
+        margin: 1rem 0;
+        color: #e6edf3 !important;
+    }
+    
+    /* ──── 12. 코드 블록 ──── */
+    code {
+        background-color: #161b22 !important;
+        color: #79c0ff !important;
+        padding: 0.2rem 0.4rem !important;
+        border-radius: 4px !important;
+        font-size: 0.95rem !important;
+    }
+    
+    pre {
+        background-color: #0d1117 !important;
+        border: 1px solid #30363d !important;
+        border-radius: 8px !important;
+        padding: 1rem !important;
+    }
+    
+    pre code {
+        color: #e6edf3 !important;
+    }
+    
+    /* ──── 13. 구분선 ──── */
+    hr {
+        margin: 2rem 0;
+        border: none;
+        border-top: 2px solid #30363d;
+    }
+    
+    /* ──── 14. Expander ──── */
+    [data-testid="stExpander"] {
+        background-color: #161b22 !important;
+        border: 1px solid #30363d !important;
+        border-radius: 8px !important;
+    }
+    
+    /* ──── 15. Radio 버튼 ──── */
+    [data-testid="stRadio"] label {
+        color: #e6edf3 !important;
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+    }
+    
+    /* ──── 16. 접근성 ──── */
+    *:focus-visible {
+        outline: 2px solid #58a6ff;
+        outline-offset: 2px;
+    }
+    
+    /* ──── 17. 스크린 리더 전용 ──── */
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border-width: 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 제목
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+st.title("VMSI-SDM Dashboard")
+st.markdown("**자가학습형 TradingView 지표 모니터링 시스템**")
+st.markdown("---")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 사이드바
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+st.sidebar.header("⚙️ 설정")
+
+days_back = st.sidebar.slider("조회 기간 (일)", 1, 90, 30)
+
+signal_filter = st.sidebar.multiselect(
+    "신호 타입",
+    ["BUY", "SELL", "WATCH_UP", "WATCH_DOWN"],
+    default=["BUY", "SELL"]
+)
+
+symbol_filter = st.sidebar.text_input("심볼 필터 (예: AAPL)", "")
+
+if st.sidebar.button("🔄 새로고침"):
+    st.rerun()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 데이터 로드
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@st.cache_data(ttl=60)
+def load_signals(days_back: int, signal_types: list, symbol: str = ""):
+    """신호 데이터 로드"""
+    db = SessionLocal()
+    
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+    query = db.query(Signal).filter(Signal.created_at >= cutoff_date)
+    
+    if signal_types:
+        query = query.filter(Signal.signal.in_(signal_types))
+    
+    if symbol:
+        query = query.filter(Signal.symbol.contains(symbol.upper()))
+    
+    signals = query.order_by(Signal.created_at.desc()).all()
+    
+    data = []
+    for s in signals:
+        features = s.features_json
+        labels = {label.fwd_n: label for label in s.labels}
+        
+        data.append({
+            'id': s.id,
+            'created_at': s.created_at,
+            'symbol': s.symbol,
+            'tf': s.tf,
+            'signal': s.signal,
+            'trend_score': features.get('trendScore', 0),
+            'prob': features.get('prob', 0),
+            'rsi': features.get('rsi', 50),
+            'vol_mult': features.get('vol_mult', 1),
+            'fwd_ret_10': labels.get(10).fwd_ret if 10 in labels else None,
+            'broke_high': labels.get(10).broke_high if 10 in labels else None,
+            'broke_low': labels.get(10).broke_low if 10 in labels else None,
+        })
+    
+    db.close()
+    return pd.DataFrame(data)
+
+
+@st.cache_data(ttl=300)
+def load_presets():
+    """프리셋 로드"""
+    manager = PresetManager()
+    current = manager.load_preset(manager.current_preset_path)
+    candidate = manager.load_preset(manager.candidate_preset_path)
+    return current, candidate
+
+
+@st.cache_data(ttl=300)
+def load_experiments(limit: int = 10):
+    """실험 결과 로드"""
+    db = SessionLocal()
+    experiments = db.query(Experiment).order_by(Experiment.created_at.desc()).limit(limit).all()
+    
+    data = []
+    for exp in experiments:
+        metrics = exp.metrics
+        data.append({
+            'run_id': exp.run_id,
+            'created_at': exp.created_at,
+            'pf': metrics.get('pf', 0),
+            'mdd': metrics.get('mdd', 0),
+            'win_rate': metrics.get('win_rate', 0),
+            'psu_10': metrics.get('psu_10', 0)
+        })
+    
+    db.close()
+    return pd.DataFrame(data)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Plotly 다크 테마 설정
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PLOTLY_DARK_TEMPLATE = dict(
+    layout=dict(
+        paper_bgcolor='#0d1117',
+        plot_bgcolor='#0d1117',
+        font=dict(color='#e6edf3', size=13, family='Segoe UI, Malgun Gothic'),
+        xaxis=dict(gridcolor='#3b434d', linecolor='#30363d', color='#e6edf3'),
+        yaxis=dict(gridcolor='#3b434d', linecolor='#30363d', color='#e6edf3'),
+        title=dict(font=dict(size=18, color='#58a6ff', family='Segoe UI')),
+        legend=dict(bgcolor='#161b22', bordercolor='#30363d', borderwidth=1)
+    )
+)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 메인 대시보드
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+tab1, tab2, tab3, tab4 = st.tabs(["📊 신호 모니터링", "🔬 A/B 비교", "📈 실험 히스토리", "⚙️ 프리셋 관리"])
+
+
+# ═══════════════════════════════════════════════════════════
+# 탭 1: 신호 모니터링
+# ═══════════════════════════════════════════════════════════
+
+with tab1:
+    st.header("신호 모니터링")
+    
+    df_signals = load_signals(days_back, signal_filter, symbol_filter)
+    
+    if len(df_signals) == 0:
+        st.warning("⚠️ 선택한 기간에 신호가 없습니다.")
+    else:
+        # ─── 통계 카드 ───
+        st.subheader("📊 전체 통계")
+        
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric("총 신호", len(df_signals))
+        
+        with col2:
+            buy_count = len(df_signals[df_signals['signal'] == 'BUY'])
+            st.metric("BUY 신호", buy_count, 
+                     delta=f"{buy_count/len(df_signals)*100:.0f}%" if len(df_signals) > 0 else "0%")
+        
+        with col3:
+            sell_count = len(df_signals[df_signals['signal'] == 'SELL'])
+            st.metric("SELL 신호", sell_count,
+                     delta=f"{sell_count/len(df_signals)*100:.0f}%" if len(df_signals) > 0 else "0%")
+        
+        with col4:
+            avg_prob = df_signals['prob'].mean()
+            st.metric("평균 확률", f"{avg_prob:.2f}",
+                     delta=f"{(avg_prob-0.5)*100:.0f}%" if avg_prob > 0 else "0%")
+        
+        with col5:
+            avg_ts = df_signals['trend_score'].mean()
+            st.metric("평균 TrendScore", f"{avg_ts:.0f}",
+                     delta=f"{(avg_ts-50):.0f}" if avg_ts > 0 else "0")
+        
+        st.markdown("---")
+        
+        # ─── 시계열 차트 ───
+        st.subheader("📈 신호 발생 추이")
+        
+        df_timeline = df_signals.copy()
+        df_timeline['date'] = pd.to_datetime(df_timeline['created_at']).dt.date
+        timeline_counts = df_timeline.groupby(['date', 'signal']).size().reset_index(name='count')
+        
+        fig_timeline = px.bar(
+            timeline_counts, x='date', y='count', color='signal',
+            title="일별 신호 발생 빈도",
+            color_discrete_map={'BUY': '#2ea043', 'SELL': '#f85149', 
+                              'WATCH_UP': '#1f6feb', 'WATCH_DOWN': '#fb8500'},
+            barmode='group', template=PLOTLY_DARK_TEMPLATE
+        )
+        fig_timeline.update_layout(height=400, xaxis_title="날짜", yaxis_title="신호 개수")
+        st.plotly_chart(fig_timeline, width="stretch")
+        
+        # ─── 성과 분석 ───
+        df_labeled = df_signals[df_signals['fwd_ret_10'].notna()]
+        
+        if len(df_labeled) > 0:
+            st.markdown("---")
+            st.subheader("💰 신호 성과 분석 (10-bar forward)")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown("### 🟢 BUY 신호")
+                df_buy = df_labeled[df_labeled['signal'] == 'BUY']
+                
+                if len(df_buy) > 0:
+                    buy_metrics = PerformanceMetrics.calculate_all_metrics(df_buy, 'BUY')
+                    subcol1, subcol2 = st.columns(2)
+                    with subcol1:
+                        st.metric("Profit Factor", f"{buy_metrics['pf']:.2f}")
+                        st.metric("평균 수익률", f"{buy_metrics['avg_ret']*100:.2f}%")
+                    with subcol2:
+                        st.metric("승률", f"{buy_metrics['win_rate']*100:.1f}%")
+                        st.metric("거래 횟수", f"{buy_metrics['total_trades']}")
+                else:
+                    st.info("데이터 없음")
+            
+            with col2:
+                st.markdown("### 🔴 SELL 신호")
+                df_sell = df_labeled[df_labeled['signal'] == 'SELL']
+                
+                if len(df_sell) > 0:
+                    sell_metrics = PerformanceMetrics.calculate_all_metrics(df_sell, 'SELL')
+                    subcol1, subcol2 = st.columns(2)
+                    with subcol1:
+                        st.metric("Profit Factor", f"{sell_metrics['pf']:.2f}")
+                        st.metric("평균 수익률", f"{sell_metrics['avg_ret']*100:.2f}%")
+                    with subcol2:
+                        st.metric("승률", f"{sell_metrics['win_rate']*100:.1f}%")
+                        st.metric("거래 횟수", f"{sell_metrics['total_trades']}")
+                else:
+                    st.info("데이터 없음")
+            
+            with col3:
+                st.markdown("### 📊 전체 통계")
+                all_ret = df_labeled['fwd_ret_10'].mean()
+                all_win = (df_labeled['fwd_ret_10'] > 0).mean()
+                subcol1, subcol2 = st.columns(2)
+                with subcol1:
+                    st.metric("전체 평균 수익률", f"{all_ret*100:.2f}%")
+                    st.metric("고가 돌파율", f"{df_labeled['broke_high'].mean()*100:.0f}%")
+                with subcol2:
+                    st.metric("전체 승률", f"{all_win*100:.1f}%")
+                    st.metric("저가 이탈율", f"{df_labeled['broke_low'].mean()*100:.0f}%")
+            
+            # ─── 수익률 분포 ───
+            st.markdown("---")
+            st.subheader("📉 수익률 분포")
+            
+            fig_dist = px.histogram(
+                df_labeled, x='fwd_ret_10', color='signal', nbins=30,
+                title="10-bar Forward Return 분포",
+                color_discrete_map={'BUY': '#2ea043', 'SELL': '#f85149'},
+                marginal="box", template=PLOTLY_DARK_TEMPLATE
+            )
+            fig_dist.update_layout(height=400, xaxis_title="수익률", yaxis_title="빈도")
+            st.plotly_chart(fig_dist, width="stretch")
+        
+        # ─── 최근 신호 테이블 ───
+        st.markdown("---")
+        st.subheader("📋 최근 신호 목록")
+        
+        display_df = df_signals[[
+            'created_at', 'symbol', 'tf', 'signal',
+            'trend_score', 'prob', 'rsi', 'vol_mult', 'fwd_ret_10'
+        ]].head(50).copy()
+        
+        display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+        display_df.columns = ['시각', '심볼', 'TF', '신호', 'TrendScore', 'Prob', 'RSI', 'VolMult', '10-bar 수익률']
+        
+        st.dataframe(display_df, width="stretch", height=600)
+
+
+# ═══════════════════════════════════════════════════════════
+# 탭 2: A/B 비교
+# ═══════════════════════════════════════════════════════════
+
+with tab2:
+    st.header("프리셋 A/B 비교")
+    
+    try:
+        current_preset, candidate_preset = load_presets()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🅰️ Current Preset")
+            st.markdown(f"**버전:** `{current_preset.get('version', 'N/A')}`")
+            
+            if 'metrics' in current_preset:
+                metrics = current_preset['metrics']
+                m1, m2 = st.columns(2)
+                with m1:
+                    st.metric("Profit Factor", f"{metrics.get('pf', 0):.2f}")
+                    st.metric("Win Rate", f"{metrics.get('win_rate', 0)*100:.1f}%")
+                with m2:
+                    st.metric("Max Drawdown", f"{metrics.get('mdd', 0)*100:.2f}%")
+                    st.metric("PSU Success", f"{metrics.get('psu_success', 0)*100:.1f}%")
+            
+            with st.expander("파라미터 상세보기"):
+                st.json(current_preset.get('params', {}))
+        
+        with col2:
+            st.subheader("🅱️ Candidate Preset")
+            st.markdown(f"**버전:** `{candidate_preset.get('version', 'N/A')}`")
+            
+            if 'metrics' in candidate_preset:
+                metrics = candidate_preset['metrics']
+                m1, m2 = st.columns(2)
+                with m1:
+                    pf_diff = metrics.get('pf', 0) - current_preset.get('metrics', {}).get('pf', 0)
+                    st.metric("Profit Factor", f"{metrics.get('pf', 0):.2f}", delta=f"{pf_diff:.2f}")
+                    wr_diff = metrics.get('win_rate', 0) - current_preset.get('metrics', {}).get('win_rate', 0)
+                    st.metric("Win Rate", f"{metrics.get('win_rate', 0)*100:.1f}%", delta=f"{wr_diff*100:.1f}%")
+                with m2:
+                    mdd_diff = metrics.get('mdd', 0) - current_preset.get('metrics', {}).get('mdd', 0)
+                    st.metric("Max Drawdown", f"{metrics.get('mdd', 0)*100:.2f}%", 
+                             delta=f"{mdd_diff*100:.2f}%", delta_color="inverse")
+                    psu_diff = metrics.get('psu_success', 0) - current_preset.get('metrics', {}).get('psu_success', 0)
+                    st.metric("PSU Success", f"{metrics.get('psu_success', 0)*100:.1f}%", delta=f"{psu_diff*100:.1f}%")
+            
+            with st.expander("파라미터 상세보기"):
+                st.json(candidate_preset.get('params', {}))
+        
+        st.markdown("---")
+        
+        # 비교 차트
+        st.subheader("📊 성능 지표 비교")
+        
+        comparison_data = pd.DataFrame({
+            'Metric': ['Profit Factor', 'Win Rate', 'MDD (inverted)'],
+            'Current': [
+                current_preset.get('metrics', {}).get('pf', 0),
+                current_preset.get('metrics', {}).get('win_rate', 0),
+                1 - current_preset.get('metrics', {}).get('mdd', 0)
+            ],
+            'Candidate': [
+                candidate_preset.get('metrics', {}).get('pf', 0),
+                candidate_preset.get('metrics', {}).get('win_rate', 0),
+                1 - candidate_preset.get('metrics', {}).get('mdd', 0)
+            ]
+        })
+        
+        fig_comparison = go.Figure(data=[
+            go.Bar(name='Current', x=comparison_data['Metric'], y=comparison_data['Current'], marker_color='#1f6feb'),
+            go.Bar(name='Candidate', x=comparison_data['Metric'], y=comparison_data['Candidate'], marker_color='#f85149')
+        ], layout=PLOTLY_DARK_TEMPLATE['layout'])
+        
+        fig_comparison.update_layout(barmode='group', title="프리셋 성능 비교", height=400)
+        st.plotly_chart(fig_comparison, width="stretch")
+        
+        # 승격 버튼
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("✅ Candidate를 Current로 승격", use_container_width=True, type="primary"):
+                manager = PresetManager()
+                if manager.promote_candidate_to_current():
+                    st.success("✓ Candidate가 Current로 승격되었습니다!")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error("❌ 승격 실패")
+        
+    except Exception as e:
+        st.error(f"프리셋 로드 실패: {e}")
+
+
+# ═══════════════════════════════════════════════════════════
+# 탭 3: 실험 히스토리
+# ═══════════════════════════════════════════════════════════
+
+with tab3:
+    st.header("실험 히스토리")
+    
+    df_experiments = load_experiments(20)
+    
+    if len(df_experiments) == 0:
+        st.info("실험 기록이 없습니다. Learner를 실행하세요.")
+    else:
+        st.subheader("📋 최근 실험 결과")
+        
+        display_exp = df_experiments.copy()
+        display_exp['created_at'] = pd.to_datetime(display_exp['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+        display_exp.columns = ['Run ID', '생성 시각', 'Profit Factor', 'Max Drawdown', 'Win Rate', 'PSU 10-bar']
+        
+        st.dataframe(display_exp, width="stretch", height=400)
+        
+        st.markdown("---")
+        st.subheader("📈 실험 성능 추이")
+        
+        fig_exp = make_subplots(rows=2, cols=2, subplot_titles=("Profit Factor", "Max Drawdown", "Win Rate", "PSU 10-bar"))
+        
+        fig_exp.add_trace(go.Scatter(x=df_experiments.index, y=df_experiments['pf'], 
+                                     mode='lines+markers', name='PF', line=dict(color='#1f6feb', width=3)), row=1, col=1)
+        fig_exp.add_trace(go.Scatter(x=df_experiments.index, y=df_experiments['mdd'],
+                                     mode='lines+markers', name='MDD', line=dict(color='#f85149', width=3)), row=1, col=2)
+        fig_exp.add_trace(go.Scatter(x=df_experiments.index, y=df_experiments['win_rate'],
+                                     mode='lines+markers', name='WR', line=dict(color='#2ea043', width=3)), row=2, col=1)
+        fig_exp.add_trace(go.Scatter(x=df_experiments.index, y=df_experiments['psu_10'],
+                                     mode='lines+markers', name='PSU', line=dict(color='#fb8500', width=3)), row=2, col=2)
+        
+        fig_exp.update_layout(height=600, showlegend=False, **PLOTLY_DARK_TEMPLATE['layout'])
+        st.plotly_chart(fig_exp, width="stretch")
+
+
+# ═══════════════════════════════════════════════════════════
+# 탭 4: 프리셋 관리
+# ═══════════════════════════════════════════════════════════
+
+with tab4:
+    st.header("프리셋 관리")
+    
+    try:
+        current_preset, candidate_preset = load_presets()
+        manager = PresetManager()
+        
+        st.subheader("📋 Pine Script 파라미터 (복사용)")
+        
+        preset_choice = st.radio("프리셋 선택", ["Current", "Candidate"], horizontal=True)
+        
+        selected_preset = current_preset if preset_choice == "Current" else candidate_preset
+        pine_code = manager.generate_pine_script_comment(selected_preset)
+        
+        st.code(pine_code, language="javascript")
+        
+        st.markdown('<div class="info-box">💡 위 코드를 복사하여 TradingView Pine Script 지표에 붙여넣으세요.</div>', unsafe_allow_html=True)
+        
+    except Exception as e:
+        st.error(f"프리셋 로드 실패: {e}")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 푸터
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #8b949e; padding: 2rem 0;'>
+    <p style='font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem; color: #58a6ff;'>
+        VMSI-SDM v2.0 | 자가학습형 TradingView 지표 시스템
+    </p>
+    <p style='font-size: 1rem;'>
+        💡 문의: docs/README.md 참조 | 포트: 8501 (Dashboard) / 8000 (API Server)
+    </p>
+</div>
+""", unsafe_allow_html=True)

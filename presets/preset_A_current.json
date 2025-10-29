@@ -1,0 +1,36 @@
+{
+  "version": "v2025-10-29_baseline",
+  "created_at": "2025-10-29T02:00:00",
+  "params": {
+    "ema1": 20,
+    "ema2": 50,
+    "rsi": 14,
+    "vcp": 20,
+    "rsi_buy_th": 55,
+    "rsi_sell_th": 45,
+    "vol_mult_buy": 1.5,
+    "vol_mult_sell": 1.3,
+    "macro_weights": {
+      "vix_w": -0.3,
+      "dxy_w": -0.2,
+      "us10y_w": -0.2,
+      "hygief_w": 0.4
+    },
+    "alpha": 0.8,
+    "beta": 0.35,
+    "gamma": 0.7,
+    "delta": 0.6,
+    "epsilon": 0.8,
+    "hysteresis_len": 3,
+    "cooldown_bars": 3
+  },
+  "metrics": {
+    "pf": 1.47,
+    "mdd": 0.14,
+    "psu_success": 0.68,
+    "win_rate": 0.62,
+    "total_trades": 0
+  }
+}
+
+

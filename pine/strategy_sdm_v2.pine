@@ -1,0 +1,284 @@
+//@version=6
+strategy("VMSI-SDM Strategy v2", overlay=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1)
+
+// ═══════════════════════════════════════════════════════════
+// 📌 VMSI-SDM Strategy - 백테스트용 전략
+// Indicator와 동일한 로직, 실제 매매 시뮬레이션
+// ═══════════════════════════════════════════════════════════
+
+// ─────────────── 파라미터 ───────────────
+var g_params = "파라미터 설정"
+ema1_len = input.int(20, "EMA1 Length", group=g_params)
+ema2_len = input.int(50, "EMA2 Length", group=g_params)
+rsi_len = input.int(14, "RSI Length", group=g_params)
+vcp_len = input.int(20, "VCP Length", group=g_params)
+
+rsi_buy_th = input.float(55, "RSI Buy Threshold", group=g_params)
+rsi_sell_th = input.float(45, "RSI Sell Threshold", group=g_params)
+vol_mult_buy = input.float(1.5, "Volume Mult Buy", group=g_params)
+vol_mult_sell = input.float(1.3, "Volume Mult Sell", group=g_params)
+
+alpha = input.float(0.8, "Alpha", step=0.05, group=g_params)
+beta = input.float(0.35, "Beta", step=0.05, group=g_params)
+gamma = input.float(0.7, "Gamma", step=0.05, group=g_params)
+delta = input.float(0.6, "Delta", step=0.05, group=g_params)
+epsilon = input.float(0.8, "Epsilon", step=0.05, group=g_params)
+
+hysteresis_len = input.int(5, "Hysteresis Length", group=g_params)
+cooldown_bars = input.int(10, "Cooldown Bars", group=g_params)
+
+vix_w = input.float(-0.3, "VIX Weight", step=0.1, group=g_params)
+dxy_w = input.float(-0.2, "DXY Weight", step=0.1, group=g_params)
+us10y_w = input.float(-0.2, "US10Y Weight", step=0.1, group=g_params)
+hygief_w = input.float(0.4, "HYG/IEF Weight", step=0.1, group=g_params)
+
+// 빠른 모드
+var g_mode = "모드 설정"
+fast_mode = input.bool(false, "Fast Mode (No Hysteresis/Cooldown)", tooltip="활성화 시 히스테리시스와 쿨다운을 생략", group=g_mode)
+
+use_realtime_macro = input.bool(false, "Use Real-time Macro Data", group=g_mode)
+
+// 테이블 설정
+var g_table = "테이블 설정"
+table_position = input.string("Top Right", "Panel Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=g_table)
+table_size = input.string("Normal", "Panel Size", options=["Large", "Normal", "Small"], group=g_table)
+
+// 리스크 관리 강화
+var g_risk = "리스크 관리"
+use_sl_tp = input.bool(true, "Use SL/TP (기본 활성화)", group=g_risk)
+use_atr_based = input.bool(false, "Use ATR-based Dynamic SL/TP", tooltip="ATR 기반 동적 손절/익절 (변동성 대응)", group=g_risk)
+
+// 고정 SL/TP
+sl_pct = input.float(5.0, "Stop Loss %", step=0.5, minval=0.1, group=g_risk)
+tp_pct = input.float(10.0, "Take Profit %", step=0.5, minval=0.1, group=g_risk)
+
+// ATR 기반 SL/TP
+atr_len = input.int(14, "ATR Length", minval=1, group=g_risk)
+atr_sl_mult = input.float(2.0, "ATR SL Multiplier", step=0.1, minval=0.1, group=g_risk)
+atr_tp_mult = input.float(3.0, "ATR TP Multiplier", step=0.1, minval=0.1, group=g_risk)
+
+// 포지션 사이징
+var g_sizing = "포지션 사이징"
+use_risk_based_sizing = input.bool(false, "Use Risk-based Position Sizing", tooltip="리스크 기반 포지션 크기 조절 (고급)", group=g_sizing)
+risk_per_trade = input.float(2.0, "Risk per Trade (%)", step=0.5, minval=0.1, maxval=10, group=g_sizing)
+
+// ─────────────── 지표 계산 (Indicator와 동일) ───────────────
+ema1 = ta.ema(close, ema1_len)
+ema2 = ta.ema(close, ema2_len)
+rsi = ta.rsi(close, rsi_len)
+
+vol_avg = ta.sma(volume, 20)
+vol_mult = volume / vol_avg
+
+vcp_high = ta.highest(high, vcp_len)
+vcp_low = ta.lowest(low, vcp_len)
+vcp_ratio = (vcp_high - vcp_low) / vcp_high
+
+ath = ta.highest(high, 252)
+dist_ath = (ath - close) / ath
+
+// 매크로 (실시간 or 시뮬레이션)
+vix_val = use_realtime_macro ? request.security("VIX", timeframe.period, close) : 18.4
+dxy_val = use_realtime_macro ? request.security("DXY", timeframe.period, close) : 104.5
+us10y_val = use_realtime_macro ? request.security("US10Y", timeframe.period, close) : 4.5
+hyg_close = use_realtime_macro ? request.security("HYG", timeframe.period, close) : 79.0
+ief_close = use_realtime_macro ? request.security("IEF", timeframe.period, close) : 95.0
+hygief_ratio = hyg_close / ief_close
+
+dxy_trend_val = use_realtime_macro ? (ta.ema(dxy_val, 10) > ta.ema(dxy_val, 30) ? 1.0 : -1.0) : -1.0
+us10y_trend_val = use_realtime_macro ? (ta.ema(us10y_val, 10) > ta.ema(us10y_val, 30) ? 1.0 : -1.0) : 0.0
+hygief_val = use_realtime_macro ? (hygief_ratio > ta.ema(hygief_ratio, 20) ? 1.0 : -1.0) : 1.0
+
+macro_score = vix_w * (vix_val / 20.0) + dxy_w * dxy_trend_val + us10y_w * us10y_trend_val + hygief_w * hygief_val
+
+// TrendScore
+ema_above = ema1 > ema2 ? 1.0 : 0.0
+rsi_norm = rsi / 100.0
+vol_norm = math.min(vol_mult / 3.0, 1.0)
+vcp_norm = 1.0 - vcp_ratio
+
+trend_score = (alpha * ema_above + beta * rsi_norm + gamma * vol_norm + delta * vcp_norm) * 100.0
+trend_score := math.max(0, math.min(100, trend_score))
+
+prob_raw = (trend_score / 100.0 + epsilon * macro_score) / (1.0 + epsilon)
+prob = math.max(0.0, math.min(1.0, prob_raw))
+
+// 빠른 모드 분기
+trend_score_smooth = fast_mode ? trend_score : ta.sma(trend_score, hysteresis_len)
+prob_smooth = fast_mode ? prob : ta.sma(prob, hysteresis_len)
+
+// ─────────────── ATR 계산 (리스크 관리용) ───────────────
+atr_val = ta.atr(atr_len)
+
+// SL/TP 계산 (고정 or ATR 기반)
+calc_sl_distance() =>
+    if use_atr_based
+        atr_val * atr_sl_mult
+    else
+        close * (sl_pct / 100.0)
+
+calc_tp_distance() =>
+    if use_atr_based
+        atr_val * atr_tp_mult
+    else
+        close * (tp_pct / 100.0)
+
+// 포지션 사이즈 계산 (리스크 기반)
+calc_position_size() =>
+    if use_risk_based_sizing
+        account_value = strategy.equity
+        risk_amount = account_value * (risk_per_trade / 100.0)
+        sl_distance = calc_sl_distance()
+        position_value = sl_distance > 0 ? risk_amount / sl_distance * close : account_value
+        math.min(position_value, account_value)
+    else
+        strategy.equity  // 100% equity
+
+// ─────────────── Stage & Signal (원래 설계: Stage Detection) ───────────────
+var string stage = "WATCH"
+var int last_signal_bar = 0
+var string last_signal = ""
+
+bars_since_signal = bar_index - last_signal_bar
+cooldown_passed = fast_mode ? true : (bars_since_signal >= cooldown_bars)
+
+if barstate.isconfirmed
+    if cooldown_passed
+        // BUY: 강력한 상승 추세 진입 (보수적)
+        if trend_score_smooth >= 75 and prob_smooth >= 0.65 and rsi > rsi_buy_th and vol_mult > vol_mult_buy
+            stage := "BUY"
+            last_signal := "BUY"
+            last_signal_bar := bar_index
+        // SELL: 강력한 하락 추세 진입 (보수적)
+        else if trend_score_smooth <= 25 and prob_smooth <= 0.35 and rsi < rsi_sell_th and vol_mult > vol_mult_sell
+            stage := "SELL"
+            last_signal := "SELL"
+            last_signal_bar := bar_index
+        // WATCH_UP: 상승 관찰 (아직 매수 아님)
+        else if trend_score_smooth > 55 and prob_smooth > 0.55
+            stage := "WATCH_UP"
+        // WATCH_DOWN: 하락 관찰 (아직 매도 아님)
+        else if trend_score_smooth < 45 and prob_smooth < 0.45
+            stage := "WATCH_DOWN"
+
+// ─────────────── 매매 로직 ───────────────
+// 롱 진입
+if last_signal == "BUY" and bar_index == last_signal_bar and strategy.position_size == 0
+    position_size = calc_position_size()
+    qty = position_size / close
+    strategy.entry("Long", strategy.long, qty=qty)
+    
+    // SL/TP 설정
+    if use_sl_tp
+        sl_price = close - calc_sl_distance()
+        tp_price = close + calc_tp_distance()
+        strategy.exit("Long Exit", "Long", stop=sl_price, limit=tp_price)
+
+// 숏 진입
+if last_signal == "SELL" and bar_index == last_signal_bar and strategy.position_size == 0
+    position_size = calc_position_size()
+    qty = position_size / close
+    strategy.entry("Short", strategy.short, qty=qty)
+    
+    // SL/TP 설정
+    if use_sl_tp
+        sl_price = close + calc_sl_distance()
+        tp_price = close - calc_tp_distance()
+        strategy.exit("Short Exit", "Short", stop=sl_price, limit=tp_price)
+
+// 포지션 반대 신호 시 청산
+if strategy.position_size > 0 and last_signal == "SELL" and bar_index == last_signal_bar
+    strategy.close("Long", comment="Reverse Signal")
+
+if strategy.position_size < 0 and last_signal == "BUY" and bar_index == last_signal_bar
+    strategy.close("Short", comment="Reverse Signal")
+
+// ─────────────── 시각화 ───────────────
+// 배경색: BUY/SELL만 표시 (WATCH는 배경 없음으로 가독성 향상)
+bgcolor_col = stage == "BUY" ? color.new(color.green, 85) : stage == "SELL" ? color.new(color.red, 85) : na
+bgcolor(bgcolor_col)
+
+plot(ema1, "EMA20", color=color.blue, linewidth=1)
+plot(ema2, "EMA50", color=color.orange, linewidth=2)
+
+// SL/TP 레벨 계산 (plot은 전역 스코프에서만 가능)
+entry_price = strategy.position_size != 0 ? strategy.position_avg_price : na
+sl_dist = strategy.position_size != 0 ? calc_sl_distance() : na
+tp_dist = strategy.position_size != 0 ? calc_tp_distance() : na
+
+// Long SL/TP (조건부 표시)
+long_sl = use_sl_tp and strategy.position_size > 0 ? entry_price - sl_dist : na
+long_tp = use_sl_tp and strategy.position_size > 0 ? entry_price + tp_dist : na
+
+// Short SL/TP (조건부 표시)
+short_sl = use_sl_tp and strategy.position_size < 0 ? entry_price + sl_dist : na
+short_tp = use_sl_tp and strategy.position_size < 0 ? entry_price - tp_dist : na
+
+// Plot (전역 스코프)
+plot(long_sl, "Long SL", color=color.red, linewidth=2, style=plot.style_linebr)
+plot(long_tp, "Long TP", color=color.green, linewidth=2, style=plot.style_linebr)
+plot(short_sl, "Short SL", color=color.red, linewidth=2, style=plot.style_linebr)
+plot(short_tp, "Short TP", color=color.green, linewidth=2, style=plot.style_linebr)
+
+// ─────────────── 패널 표시 (위치/크기 선택 가능) ───────────────
+// 위치 결정 (한 줄로 작성)
+panel_pos = table_position == "Top Right" ? position.top_right : table_position == "Top Left" ? position.top_left : table_position == "Bottom Right" ? position.bottom_right : position.bottom_left
+
+// 크기 결정
+text_size_label = table_size == "Large" ? size.large : table_size == "Small" ? size.small : size.normal
+text_size_value = table_size == "Large" ? size.normal : table_size == "Small" ? size.tiny : size.small
+text_size_stage = table_size == "Large" ? size.huge : table_size == "Small" ? size.normal : size.large
+
+var table panel = table.new(panel_pos, 2, 10, border_width=2)
+if barstate.islast
+    // 모드 표시
+    mode_text = fast_mode ? "FAST" : "NORMAL"
+    mode_color = fast_mode ? color.new(color.yellow, 0) : color.new(color.blue, 0)
+    table.cell(panel, 0, 0, "Mode", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 0, mode_text, bgcolor=mode_color, text_color=color.white, text_size=text_size_value)
+    
+    // Stage (배경색 항상 표시)
+    stage_bg = stage == "BUY" ? color.new(color.green, 20) : stage == "SELL" ? color.new(color.red, 20) : stage == "WATCH_UP" ? color.new(color.blue, 20) : color.new(color.orange, 20)
+    table.cell(panel, 0, 1, "Stage", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 1, stage, bgcolor=stage_bg, text_color=color.white, text_size=text_size_stage)
+    
+    // TScore
+    table.cell(panel, 0, 2, "TScore", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 2, str.tostring(trend_score_smooth, "#.0"), bgcolor=color.new(color.gray, 80), text_color=color.white, text_size=text_size_value)
+    
+    // Prob
+    table.cell(panel, 0, 3, "Prob", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 3, str.tostring(prob_smooth, "#.##"), bgcolor=color.new(color.gray, 80), text_color=color.white, text_size=text_size_value)
+    
+    // 포지션 정보
+    pos_text = strategy.position_size > 0 ? "LONG" : (strategy.position_size < 0 ? "SHORT" : "FLAT")
+    pos_color = strategy.position_size > 0 ? color.new(color.green, 20) : (strategy.position_size < 0 ? color.new(color.red, 20) : color.new(color.gray, 20))
+    table.cell(panel, 0, 4, "Position", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 4, pos_text, bgcolor=pos_color, text_color=color.white, text_size=text_size_value)
+    
+    // P&L
+    pnl_pct = strategy.position_size != 0 ? (close - strategy.position_avg_price) / strategy.position_avg_price * 100 : 0
+    pnl_color = pnl_pct > 0 ? color.new(color.green, 20) : (pnl_pct < 0 ? color.new(color.red, 20) : color.new(color.gray, 80))
+    table.cell(panel, 0, 5, "P&L", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 5, str.tostring(pnl_pct, "#.##") + "%", bgcolor=pnl_color, text_color=color.white, text_size=text_size_value)
+    
+    // SL/TP 상태
+    sltp_text = use_sl_tp ? (use_atr_based ? "ATR" : "FIXED") : "OFF"
+    sltp_color = use_sl_tp ? (use_atr_based ? color.new(color.purple, 20) : color.new(color.blue, 20)) : color.new(color.gray, 80)
+    table.cell(panel, 0, 6, "SL/TP", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 6, sltp_text, bgcolor=sltp_color, text_color=color.white, text_size=text_size_value)
+    
+    // ATR (변동성)
+    table.cell(panel, 0, 7, "ATR", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 7, str.tostring(atr_val, "#.##"), bgcolor=color.new(color.gray, 80), text_color=color.white, text_size=text_size_value)
+    
+    // 총 수익
+    total_profit = strategy.netprofit / strategy.initial_capital * 100
+    total_color = total_profit > 0 ? color.new(color.green, 20) : (total_profit < 0 ? color.new(color.red, 20) : color.new(color.gray, 80))
+    table.cell(panel, 0, 8, "Total", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 8, str.tostring(total_profit, "#.##") + "%", bgcolor=total_color, text_color=color.white, text_size=text_size_value)
+    
+    // 승률
+    win_rate = strategy.wintrades > 0 ? strategy.wintrades / (strategy.wintrades + strategy.losstrades) * 100 : 0
+    table.cell(panel, 0, 9, "WinRate", bgcolor=color.new(color.gray, 20), text_color=color.white, text_size=text_size_label)
+    table.cell(panel, 1, 9, str.tostring(win_rate, "#.#") + "%", bgcolor=color.new(color.gray, 80), text_color=color.white, text_size=text_size_value)
