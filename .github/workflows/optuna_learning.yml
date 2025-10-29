@@ -22,11 +22,13 @@ jobs:
         cache: 'pip'
     
     - name: Install dependencies
+      working-directory: ./vmsi-sdm
       run: |
         pip install --upgrade pip
         pip install -r requirements.txt
     
     - name: Run Optuna learning
+      working-directory: ./vmsi-sdm
       env:
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
       run: |
@@ -39,12 +41,13 @@ jobs:
       with:
         name: learning-results-${{ github.run_number }}
         path: |
-          presets/preset_B_candidate.json
-          learner/*.db
+          vmsi-sdm/presets/preset_B_candidate.json
+          vmsi-sdm/learner/*.db
         retention-days: 30
     
     - name: Commit updated presets
       if: success()
+      working-directory: ./vmsi-sdm
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
