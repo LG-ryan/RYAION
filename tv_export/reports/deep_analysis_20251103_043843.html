@@ -1,0 +1,725 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RYAION v19.1 심층 성능 분석 보고서</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: #f5f7fa;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+        }
+        .header {
+            background: #1a202c;
+            color: white;
+            padding: 48px 32px;
+            border-bottom: 4px solid #4a5568;
+        }
+        .header h1 {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        .header .subtitle {
+            font-size: 14px;
+            color: #a0aec0;
+            font-weight: 400;
+        }
+        .nav {
+            background: white;
+            padding: 0;
+            border-bottom: 1px solid #e2e8f0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .nav a {
+            display: inline-block;
+            color: #4a5568;
+            text-decoration: none;
+            padding: 16px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .nav a:hover {
+            color: #2d3748;
+            border-bottom-color: #4a5568;
+            background: #f7fafc;
+        }
+        .content {
+            padding: 32px;
+        }
+        .section {
+            margin-bottom: 48px;
+            padding: 32px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        .section h2 {
+            color: #1a202c;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #edf2f7;
+        }
+        .section h3 {
+            color: #2d3748;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 24px 0 16px 0;
+        }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin: 24px 0;
+        }
+        .metric-card {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+        }
+        .metric-card .label {
+            font-size: 12px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .metric-card .value {
+            font-size: 28px;
+            font-weight: 600;
+            color: #1a202c;
+        }
+        .metric-card .unit {
+            font-size: 14px;
+            color: #a0aec0;
+            margin-left: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        th {
+            background: #edf2f7;
+            color: #2d3748;
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #cbd5e0;
+        }
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        tr:hover {
+            background: #f7fafc;
+        }
+        .positive { color: #38a169; font-weight: 600; }
+        .negative { color: #e53e3e; font-weight: 600; }
+        .neutral { color: #d69e2e; font-weight: 600; }
+        .highlight-box {
+            background: #f7fafc;
+            padding: 16px 20px;
+            border-radius: 6px;
+            border-left: 4px solid;
+            margin: 16px 0;
+        }
+        .box-success { border-color: #38a169; }
+        .box-warning { border-color: #d69e2e; }
+        .box-danger { border-color: #e53e3e; }
+        .box-info { border-color: #3182ce; }
+        .insight {
+            background: #edf2f7;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border-left: 4px solid #4a5568;
+        }
+        .insight strong {
+            font-size: 15px;
+            font-weight: 600;
+            display: block;
+            margin-bottom: 8px;
+            color: #2d3748;
+        }
+        .pattern-card {
+            background: white;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 16px 0;
+            border: 1px solid #e2e8f0;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-right: 8px;
+        }
+        .badge-success { background: #c6f6d5; color: #22543d; }
+        .badge-warning { background: #fef3c7; color: #78350f; }
+        .badge-danger { background: #fed7d7; color: #742a2a; }
+        .badge-info { background: #bee3f8; color: #2c5282; }
+        .footer {
+            background: #1a202c;
+            color: #a0aec0;
+            padding: 32px;
+            text-align: center;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>RYAION v19.1 유니버설 인디케이터 - 심층 성능 분석 보고서</h1>
+            <div class="subtitle">생성일시: 2025-11-03 04:38:43</div>
+        </div>
+        
+        <div class="nav">
+            <a href="#overview">개요</a>
+            <a href="#backtest-buy">매수 백테스트</a>
+            <a href="#backtest-sell">매도 백테스트</a>
+            <a href="#score">4축 분해</a>
+            <a href="#components">핵심 컴포넌트</a>
+            <a href="#vix">VIX 레짐</a>
+            <a href="#stage">Stage 분석</a>
+            <a href="#false">실패 패턴</a>
+            <a href="#patterns">최적 패턴</a>
+            <a href="#threshold">임계값 최적화</a>
+            <a href="#recommendations">최종 권장사항</a>
+        </div>
+        
+        <div class="content">
+
+            <section class="section" id="overview">
+                <h2>1. 개요 및 신호 발생 현황</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>전체 다운로드된 데이터에서 각 신호가 얼마나 자주 발생했는지 통계를 보여줍니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 신호 빈도는 실전 활용성과 직결됩니다. 너무 드물면 기회가 적고, 너무 잦으면 정확도가 낮을 수 있습니다.</p>
+                    <p><strong>어떻게 활용하나요?</strong> EXTREME 신호는 1% 미만으로 희소해야 하며, STRONG은 2~3%, MODERATE는 5% 내외가 적정합니다.</p>
+                </div>
+                <h3>📊 매수 신호 발생 빈도</h3>
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="label">전체 데이터 포인트</div>
+                        <div class="value">130,611</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">EXTREME 매수</div>
+                        <div class="value">441</div>
+                        <span class="unit">0.338%</span>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">STRONG 매수</div>
+                        <div class="value">3650</div>
+                        <span class="unit">2.79%</span>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">MODERATE 매수</div>
+                        <div class="value">6892</div>
+                        <span class="unit">5.28%</span>
+                    </div>
+                </div>
+                
+                <h3>📉 매도 신호 발생 빈도</h3>
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="label">EXTREME 매도</div>
+                        <div class="value">0</div>
+                        <span class="unit">0.000%</span>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">STRONG 매도</div>
+                        <div class="value">0</div>
+                        <span class="unit">0.00%</span>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">MODERATE 매도</div>
+                        <div class="value">0</div>
+                        <span class="unit">0.00%</span>
+                    </div>
+                </div>
+                
+                <h3>🔍 보조 지표 발생 빈도</h3>
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="label">FTD 확정 (Follow Through Day)</div>
+                        <div class="value">238</div>
+                        <span class="unit">0.18%</span>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">고위험 경고</div>
+                        <div class="value negative">1863</div>
+                        <span class="unit">1.43%</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section" id="backtest-buy">
+                <h2>2. 매수 신호 백테스트 결과</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>각 매수 신호가 실제로 수익을 냈는지 검증하는 핵심 섹션입니다. 신호 발생 시점에 진입하여 일정 기간 보유했을 때의 성과를 측정합니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 아무리 멋진 신호도 실제 수익으로 이어지지 않으면 무용지물입니다. 이 섹션에서 신호의 실전 가치를 검증합니다.</p>
+                    <p><strong>논리적 해석:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 8px;">
+                        <li><strong>승률 60% 이상</strong>이 목표입니다. 50% 이하라면 동전 던지기보다 못하므로 개선이 필수입니다.</li>
+                        <li><strong>보유 기간별 차이</strong>를 보면 최적 청산 시점을 알 수 있습니다. 너무 짧으면 이익을 놓치고, 너무 길면 반등에 휘말립니다.</li>
+                        <li><strong>Sharpe 비율</strong>은 위험 대비 수익률입니다. 1.0 이상이면 양호, 2.0 이상이면 우수합니다.</li>
+                        <li><strong>최대 낙폭(Max DD)</strong>이 -30%를 넘으면 심리적으로 버티기 어렵습니다.</li>
+                    </ul>
+                </div>
+<h3>EXTREME 매수 신호</h3><table><thead><tr><th>보유 기간</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th><th>중앙값 수익률</th><th>Sharpe</th><th>최대 낙폭</th></tr></thead><tbody><tr>
+                <td>5일</td>
+                <td>441개</td>
+                <td class="positive">63.5%</td>
+                <td class="positive">+1.22%</td>
+                <td class="positive">+1.13%</td>
+                <td>0.22</td>
+                <td class="negative">-61.1%</td>
+            </tr><tr>
+                <td>10일</td>
+                <td>441개</td>
+                <td class="positive">64.4%</td>
+                <td class="positive">+1.35%</td>
+                <td class="positive">+1.49%</td>
+                <td>0.20</td>
+                <td class="negative">-68.5%</td>
+            </tr><tr>
+                <td>20일</td>
+                <td>441개</td>
+                <td class="positive">66.0%</td>
+                <td class="positive">+2.43%</td>
+                <td class="positive">+2.61%</td>
+                <td>0.30</td>
+                <td class="negative">-56.3%</td>
+            </tr><tr>
+                <td>40일</td>
+                <td>441개</td>
+                <td class="positive">66.4%</td>
+                <td class="positive">+2.65%</td>
+                <td class="positive">+3.56%</td>
+                <td>0.22</td>
+                <td class="negative">-97.8%</td>
+            </tr><tr>
+                <td>60일</td>
+                <td>441개</td>
+                <td class="positive">71.0%</td>
+                <td class="positive">+4.30%</td>
+                <td class="positive">+5.16%</td>
+                <td>0.30</td>
+                <td class="negative">-99.6%</td>
+            </tr></tbody></table><h3>STRONG 매수 신호</h3><table><thead><tr><th>보유 기간</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th><th>중앙값 수익률</th><th>Sharpe</th><th>최대 낙폭</th></tr></thead><tbody><tr>
+                <td>5일</td>
+                <td>3650개</td>
+                <td class="neutral">58.2%</td>
+                <td class="positive">+0.28%</td>
+                <td class="positive">+0.62%</td>
+                <td>0.05</td>
+                <td class="negative">-99.7%</td>
+            </tr><tr>
+                <td>10일</td>
+                <td>3650개</td>
+                <td class="positive">60.2%</td>
+                <td class="positive">+0.46%</td>
+                <td class="positive">+1.13%</td>
+                <td>0.06</td>
+                <td class="negative">-99.9%</td>
+            </tr><tr>
+                <td>20일</td>
+                <td>3645개</td>
+                <td class="positive">60.8%</td>
+                <td class="positive">+1.32%</td>
+                <td class="positive">+1.66%</td>
+                <td>0.14</td>
+                <td class="negative">-100.0%</td>
+            </tr><tr>
+                <td>40일</td>
+                <td>3645개</td>
+                <td class="positive">60.7%</td>
+                <td class="positive">+2.31%</td>
+                <td class="positive">+2.23%</td>
+                <td>0.19</td>
+                <td class="negative">-100.0%</td>
+            </tr><tr>
+                <td>60일</td>
+                <td>3645개</td>
+                <td class="positive">64.3%</td>
+                <td class="positive">+3.94%</td>
+                <td class="positive">+3.57%</td>
+                <td>0.28</td>
+                <td class="negative">-100.0%</td>
+            </tr></tbody></table><h3>MODERATE 매수 신호</h3><table><thead><tr><th>보유 기간</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th><th>중앙값 수익률</th><th>Sharpe</th><th>최대 낙폭</th></tr></thead><tbody><tr>
+                <td>5일</td>
+                <td>6892개</td>
+                <td class="neutral">57.4%</td>
+                <td class="positive">+21.78%</td>
+                <td class="positive">+0.52%</td>
+                <td>0.01</td>
+                <td class="negative">-92.9%</td>
+            </tr><tr>
+                <td>10일</td>
+                <td>6889개</td>
+                <td class="neutral">58.7%</td>
+                <td class="positive">+38.70%</td>
+                <td class="positive">+0.89%</td>
+                <td>0.01</td>
+                <td class="negative">-98.9%</td>
+            </tr><tr>
+                <td>20일</td>
+                <td>6859개</td>
+                <td class="positive">60.7%</td>
+                <td class="positive">+53.57%</td>
+                <td class="positive">+1.48%</td>
+                <td>0.01</td>
+                <td class="negative">-100.0%</td>
+            </tr><tr>
+                <td>40일</td>
+                <td>6852개</td>
+                <td class="neutral">60.0%</td>
+                <td class="positive">+63.79%</td>
+                <td class="positive">+1.91%</td>
+                <td>0.01</td>
+                <td class="negative">-100.0%</td>
+            </tr><tr>
+                <td>60일</td>
+                <td>6850개</td>
+                <td class="positive">62.6%</td>
+                <td class="positive">+70.26%</td>
+                <td class="positive">+2.92%</td>
+                <td>0.01</td>
+                <td class="negative">-100.0%</td>
+            </tr></tbody></table></section>
+            <section class="section" id="score">
+                <h2>4. 4축 스코어 분해 분석 (Trend/Momentum/Volatility/Context)</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>Bottom Score는 4가지 축(Trend, Momentum, Volatility, Context)의 합계입니다. 이 섹션에서는 "어느 축이 실제 승률에 가장 큰 영향을 미치는지" 분해 분석합니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 각 축의 실제 기여도를 알아야 가중치를 조정할 수 있습니다.</p>
+                    <p><strong>논리적 해석:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 8px;">
+                        <li><strong>Trend Score가 높을수록</strong> 장기 추세가 강하다는 의미입니다. 상승 추세에서 매수하면 승률이 높습니다.</li>
+                        <li><strong>Momentum Score가 높을수록</strong> 단기 모멘텀이 강합니다. 하지만 과열 구간일 수도 있으니 주의가 필요합니다.</li>
+                        <li><strong>Volatility Score가 높을수록</strong> 변동성이 크다는 의미입니다. 과도한 변동성은 오히려 위험 신호일 수 있습니다.</li>
+                        <li><strong>Context Score가 높을수록</strong> 상황적 요인(FTD, TD, WVF 등)이 일치합니다. 복합 신호는 신뢰도가 높습니다.</li>
+                    </ul>
+                    <p><strong>실전 활용:</strong> Low 구간 승률이 높다면 해당 축의 가중치를 낮춰도 됩니다. High 구간 승률이 낮다면 과적합(Overfitting) 신호입니다.</p>
+                </div>
+<h3>Trend 점수 구간별 성과</h3><table><thead><tr><th>점수 구간</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th></tr></thead><tbody><tr>
+                    <td>Low (0-2)</td>
+                    <td>156개</td>
+                    <td class="positive">69.2%</td>
+                    <td class="positive">+2.40%</td>
+                </tr><tr>
+                    <td>Mid (2-3.5)</td>
+                    <td>257개</td>
+                    <td class="positive">66.5%</td>
+                    <td class="positive">+2.77%</td>
+                </tr><tr>
+                    <td>High (3.5-5)</td>
+                    <td>28개</td>
+                    <td class="negative">42.9%</td>
+                    <td class="positive">-0.51%</td>
+                </tr></tbody></table><h3>Momentum 점수 구간별 성과</h3><table><thead><tr><th>점수 구간</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th></tr></thead><tbody><tr>
+                    <td>Low (0-2)</td>
+                    <td>1개</td>
+                    <td class="positive">100.0%</td>
+                    <td class="positive">+3.74%</td>
+                </tr><tr>
+                    <td>High (3.5-5)</td>
+                    <td>440개</td>
+                    <td class="positive">65.9%</td>
+                    <td class="positive">+2.43%</td>
+                </tr></tbody></table><h3>Volatility 점수 구간별 성과</h3><table><thead><tr><th>점수 구간</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th></tr></thead><tbody><tr>
+                    <td>Mid (2-3.5)</td>
+                    <td>102개</td>
+                    <td class="neutral">58.8%</td>
+                    <td class="positive">+0.78%</td>
+                </tr><tr>
+                    <td>High (3.5-5)</td>
+                    <td>339개</td>
+                    <td class="positive">68.1%</td>
+                    <td class="positive">+2.93%</td>
+                </tr></tbody></table><h3>Context 점수 구간별 성과</h3><table><thead><tr><th>점수 구간</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th></tr></thead><tbody><tr>
+                    <td>Mid (2-3.5)</td>
+                    <td>6개</td>
+                    <td class="negative">33.3%</td>
+                    <td class="positive">-1.16%</td>
+                </tr><tr>
+                    <td>High (3.5-5)</td>
+                    <td>32개</td>
+                    <td class="neutral">53.1%</td>
+                    <td class="positive">-0.81%</td>
+                </tr></tbody></table>
+                <div class="highlight-box box-success">
+                    <h3>🏆 최강 조합 발견!</h3>
+                    <p><strong>Trend 4+ & Context 8+</strong> 조합이 최고 성과를 냈습니다.</p>
+                    <p>신호 개수: 1개 | 승률: <span class="positive">0.0%</span> | 평균 수익률: <span class="positive">-8.23%</span></p>
+                    <p style="margin-top: 10px;"><strong>논리:</strong> Trend가 강하고(4점+) Context가 매우 높다(8점+)는 것은 "장기 추세가 확실하고 복합 신호도 일치"한다는 의미입니다. 이런 상황에서는 승률이 월등히 높습니다.</p>
+                </div>
+</section>
+            <section class="section" id="components">
+                <h2>5. 핵심 컴포넌트 성능 검증 (FTD / TD / WVF)</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>우리 인디케이터는 3가지 핵심 기술적 지표를 사용합니다: <strong>FTD (Follow-Through Day)</strong>, <strong>TD Sequential</strong>, <strong>WVF (Williams Vix Fix)</strong>. 이 섹션에서는 각 지표가 실제로 얼마나 정확한지 검증합니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 각 지표의 실제 정확도를 알아야 가중치를 합리적으로 조정할 수 있습니다.</p>
+                    <p><strong>논리적 해석:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 8px;">
+                        <li><strong>FTD Confirmed (1.0pt):</strong> 하락 후 강한 반등이 확정된 날입니다. 승률이 70% 이상이라면 가중치를 2.0pt로 올려도 좋습니다.</li>
+                        <li><strong>TD Buy 9 (2.0pt):</strong> 9일 연속 하락을 의미합니다. 단기 반등 가능성이 높지만, 추세 전환까지는 아닙니다.</li>
+                        <li><strong>TD Buy 13+ (5.0pt):</strong> 13일+ 연속 하락은 극단적 과매도입니다. 강력한 반등 신호이지만, 너무 드물면 실전 활용이 어렵습니다.</li>
+                        <li><strong>WVF Extreme (1.0pt):</strong> 공포 지수가 극단적으로 높은 상태입니다. 하지만 "공포"가 계속될 수도 있으므로, 승률이 50% 미만이라면 가중치를 낮춰야 합니다.</li>
+                    </ul>
+                    <p><strong>실전 활용:</strong> 승률 70% 이상이면 우수, 50~70%는 보통, 50% 미만이면 개선 필요입니다.</p>
+                </div>
+<table><thead><tr><th>지표 이름</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th><th>현재 가중치</th></tr></thead><tbody><tr>
+                <td><strong>TD Buy 9</strong></td>
+                <td>49개</td>
+                <td class="neutral">67.3%</td>
+                <td class="positive">+2.36%</td>
+                <td>2.0pt</td>
+            </tr><tr>
+                <td><strong>TD Buy 13+</strong></td>
+                <td>227개</td>
+                <td class="neutral">66.5%</td>
+                <td class="positive">+2.07%</td>
+                <td>5.0pt</td>
+            </tr><tr>
+                <td><strong>WVF Extreme</strong></td>
+                <td>386개</td>
+                <td class="neutral">67.4%</td>
+                <td class="positive">+2.63%</td>
+                <td>1.0pt</td>
+            </tr></tbody></table></section>
+            <section class="section" id="vix">
+                <h2>6. VIX 레짐별 효과 검증</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>VIX(변동성 지수)가 높을 때와 낮을 때, 시장 상황이 다릅니다. 우리 인디케이터는 VIX 레짐에 따라 임계값을 조정합니다 (<strong>HIGH: -2점, LOW: +3점</strong>). 이 섹션에서는 이 조정이 실제로 효과가 있는지 검증합니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 같은 신호라도 변동성이 다르면 의미가 다릅니다.</p>
+                    <p><strong>논리적 해석:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 8px;">
+                        <li><strong>VIX LOW (VIX < 17):</strong> 시장이 안정적입니다. 이럴 때는 작은 하락도 매수 기회이므로 임계값을 +3점 완화합니다 (18점 → 21점). 즉, 신호가 더 자주 발생합니다.</li>
+                        <li><strong>VIX NORMAL (17 ≤ VIX ≤ 25):</strong> 평범한 상황입니다. 조정 없이 기본 임계값(18점)을 사용합니다.</li>
+                        <li><strong>VIX HIGH (VIX > 25):</strong> 공포장입니다. 하락이 심하므로 임계값을 -2점 강화합니다 (18점 → 16점). 즉, 신호가 더 자주 발생하지만, 승률이 높아야 정당화됩니다.</li>
+                    </ul>
+                    <p><strong>실전 활용:</strong> HIGH 레짐 승률이 낮다면 조정을 -2점에서 -1점으로 완화하거나, 반대로 LOW 레짐 승률이 매우 높다면 +3점을 +4점으로 늘려도 됩니다.</p>
+                </div>
+<table><thead><tr><th>VIX 레짐</th><th>임계값 조정</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th></tr></thead><tbody><tr>
+                <td><strong>17 ≤ VIX ≤ 25 (보통)</strong></td>
+                <td>0점</td>
+                <td>6개</td>
+                <td class="positive">66.7%</td>
+                <td class="positive">+2.56%</td>
+            </tr><tr>
+                <td><strong>VIX > 25 (공포장)</strong></td>
+                <td>-2점</td>
+                <td>435개</td>
+                <td class="positive">66.0%</td>
+                <td class="positive">+2.43%</td>
+            </tr></tbody></table></section>
+            <section class="section" id="stage">
+                <h2>7. Stage별 타이밍 분석 (시장 사이클)</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>시장은 4단계 사이클을 반복합니다: <strong>Stage 1 (축적), Stage 2 (상승), Stage 3 (분산), Stage 4 (하락)</strong>. 이 섹션에서는 어느 Stage에서 매수 신호가 가장 정확한지 분석합니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 같은 신호라도 Stage에 따라 성공률이 다릅니다.</p>
+                    <p><strong>논리적 해석:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 8px;">
+                        <li><strong>Stage 1 (축적기):</strong> 하락 후 바닥권에서 횡보합니다. 이 구간에서 매수하면 상승 초기에 진입할 수 있어 승률이 높습니다.</li>
+                        <li><strong>Stage 2 (상승기):</strong> 본격적인 상승 추세입니다. 하지만 이미 많이 올랐기 때문에, 매수 신호가 "조정 후 재진입" 타이밍인지 확인이 필요합니다.</li>
+                        <li><strong>Stage 3 (분산기):</strong> 고점 부근에서 횡보합니다. 매수 신호가 나와도 위험합니다. 승률이 낮으면 이 Stage에서는 신호를 무시하는 것이 안전합니다.</li>
+                        <li><strong>Stage 4 (하락기):</strong> 본격 하락 추세입니다. 매수 신호는 "단기 반등" 가능성이지만, 추세를 거스르므로 위험합니다. 승률이 매우 높지 않으면 진입하지 않는 것이 좋습니다.</li>
+                    </ul>
+                    <p><strong>실전 활용:</strong> Stage 1과 4에서 승률이 높다면 "역추세 전략"이 유효합니다. Stage 2와 3에서 승률이 높다면 "추세 추종 전략"이 유효합니다.</p>
+                </div>
+<table><thead><tr><th>Stage</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th></tr></thead><tbody><tr>
+                <td><strong>Stage 1</strong></td>
+                <td>35개</td>
+                <td class="neutral">42.9%</td>
+                <td class="positive">-1.92%</td>
+            </tr><tr>
+                <td><strong>Stage 2</strong></td>
+                <td>114개</td>
+                <td class="positive">75.4%</td>
+                <td class="positive">+3.41%</td>
+            </tr><tr>
+                <td><strong>Stage 4</strong></td>
+                <td>292개</td>
+                <td class="positive">65.1%</td>
+                <td class="positive">+2.57%</td>
+            </tr></tbody></table></section>
+            <section class="section" id="false">
+                <h2>8. 실패 패턴 분석 (왜 틀렸는가?)</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>손실이 발생한 거래들을 분석하여 "어떤 공통점이 있는지" 찾아냅니다. 실패에서 배우는 것이 성공보다 중요합니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 실패 패턴을 알면 같은 실수를 반복하지 않을 수 있습니다.</p>
+                    <p><strong>논리적 해석:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 8px;">
+                        <li><strong>특정 지표가 손실에 자주 등장</strong>한다면, 그 지표의 가중치를 낮추거나 제거해야 합니다.</li>
+                        <li><strong>특정 Stage에서 손실이 집중</strong>된다면, 해당 Stage에서는 진입하지 않는 필터를 추가해야 합니다.</li>
+                        <li><strong>Volatility Score가 과도</strong>하게 높을 때 손실이 많다면, 변동성 상한선을 설정해야 합니다.</li>
+                    </ul>
+                    <p><strong>실전 활용:</strong> 이 섹션의 경고를 무시하지 마세요. 데이터가 직접 말하는 "위험 신호"입니다.</p>
+                </div>
+
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="label">총 손실 거래</div>
+                        <div class="value negative">150</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">총 수익 거래</div>
+                        <div class="value positive">291</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">손실률</div>
+                        <div class="value neutral">34.0%</div>
+                    </div>
+                </div>
+                
+                <h3>⚠️ 손실 거래의 공통 패턴</h3>
+<div class="highlight-box box-warning">[경고] Stage 4: 68% of losses (102 signals)</div></section>
+            <section class="section" id="patterns">
+                <h2>9. 최적 패턴 자동 발견 (고승률 조합)</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>머신러닝 기법으로 데이터를 분석하여, "어떤 조합이 가장 높은 승률을 기록했는지" 자동으로 찾아냅니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 사람이 찾기 어려운 복잡한 패턴을 발견할 수 있습니다.</p>
+                    <p><strong>논리적 해석:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 8px;">
+                        <li><strong>고승률 패턴</strong>은 실전에서 우선적으로 활용해야 하는 "골든 조합"입니다.</li>
+                        <li>패턴이 너무 복잡하면 과적합(Overfitting) 위험이 있으니, 신호 개수가 10개 이상인 패턴만 신뢰하세요.</li>
+                        <li><strong>실전 활용:</strong> 이 패턴이 나타날 때는 포지션 크기를 늘리거나, 보유 기간을 길게 가져가도 좋습니다.</li>
+                    </ul>
+                </div>
+
+                <div class="pattern-card">
+                    <h3>🎯 Context 9+ & Stage 1/4</h3>
+                    <div style="margin-top: 10px;">
+                        <span class="badge badge-info">57개 신호</span>
+                        <span class="badge badge-success">승률 77.2%</span>
+                        <span class="badge badge-info">평균 +2.48%</span>
+                    </div>
+                </div>
+
+                <div class="pattern-card">
+                    <h3>🎯 Bottom Score 20+</h3>
+                    <div style="margin-top: 10px;">
+                        <span class="badge badge-info">9개 신호</span>
+                        <span class="badge badge-success">승률 55.6%</span>
+                        <span class="badge badge-info">평균 +2.63%</span>
+                    </div>
+                </div>
+</section>
+            <section class="section" id="threshold">
+                <h2>10. EXTREME 임계값 최적화 (18점이 최선인가?)</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>현재 EXTREME 매수 신호의 임계값은 <strong>18점</strong>입니다. 이 섹션에서는 16점, 17점, 19점, 20점 등 다양한 값을 테스트하여 "어느 값이 가장 높은 승률을 기록하는지" 검증합니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 임계값이 너무 낮으면 신호가 많지만 승률이 떨어지고, 너무 높으면 신호가 드물어 기회를 놓칩니다.</p>
+                    <p><strong>논리적 해석:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 8px;">
+                        <li><strong>임계값을 낮추면 (16점, 17점):</strong> 신호 개수는 늘지만, 정확도가 떨어질 수 있습니다. "양"과 "질"의 트레이드오프입니다.</li>
+                        <li><strong>임계값을 높이면 (19점, 20점):</strong> 신호는 드물지만, 정확도가 올라갈 수 있습니다. "희소하지만 강력한" 전략입니다.</li>
+                        <li><strong>최적값:</strong> 승률이 가장 높은 임계값이 최적입니다. 단, 신호 개수가 10개 미만이면 통계적 신뢰도가 낮으니 주의하세요.</li>
+                    </ul>
+                    <p><strong>실전 활용:</strong> 최적값이 현재 설정(18점)과 다르다면, Pine Script 코드를 수정하여 EXTREME_BASE 값을 변경하세요.</p>
+                </div>
+<table><thead><tr><th>임계값</th><th>신호 개수</th><th>승률</th><th>평균 수익률</th><th>상태</th></tr></thead><tbody><tr>
+                <td><strong>16점</strong></td>
+                <td>751개</td>
+                <td class="neutral">64.2%</td>
+                <td class="positive">+479.55%</td>
+                <td></td>
+            </tr><tr>
+                <td><strong>17점</strong></td>
+                <td>399개</td>
+                <td class="positive">65.7%</td>
+                <td class="positive">+2.99%</td>
+                <td></td>
+            </tr><tr>
+                <td><strong>18점</strong></td>
+                <td>181개</td>
+                <td class="positive">70.7%</td>
+                <td class="positive">+3.61%</td>
+                <td>← 현재 설정</td>
+            </tr><tr>
+                <td><strong>19점</strong></td>
+                <td>47개</td>
+                <td class="positive">76.6%</td>
+                <td class="positive">+3.87%</td>
+                <td>⭐ 최적값</td>
+            </tr><tr>
+                <td><strong>20점</strong></td>
+                <td>10개</td>
+                <td class="neutral">60.0%</td>
+                <td class="positive">+2.56%</td>
+                <td></td>
+            </tr><tr>
+                <td><strong>21점</strong></td>
+                <td>1개</td>
+                <td class="neutral">0.0%</td>
+                <td class="positive">-3.29%</td>
+                <td></td>
+            </tr></tbody></table>
+                <div class="highlight-box box-success">
+                    <strong>💡 권장 사항</strong><br>
+                    임계값을 <strong>19점</strong>으로 변경하면 승률이 <strong>76.6%</strong>로 상승합니다.<br>
+                    Pine Script에서 EXTREME_BASE = 19로 수정하세요.
+                </div>
+</section>
+            <section class="section" id="recommendations">
+                <h2>11. 최종 권장 사항 (종합 개선안)</h2>
+                <div class="insight">
+                    <strong>📌 이 섹션은 무엇인가요?</strong>
+                    <p>앞의 모든 분석 결과를 종합하여, "<strong>실제로 어떻게 개선할 것인가</strong>"에 대한 구체적인 액션 아이템을 제시합니다.</p>
+                    <p><strong>왜 중요한가요?</strong> 분석만으로는 의미가 없습니다. 실행 가능한 개선안이 있어야 인디케이터가 발전합니다.</p>
+                    <p><strong>논리적 해석:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 8px;">
+                        <li><strong>[OK] 성공 항목:</strong> 이미 잘 작동하고 있으므로, 해당 부분을 더 강화하세요.</li>
+                        <li><strong>[WARN] 경고 항목:</strong> 문제는 있지만 치명적이진 않습니다. 개선하면 성과가 올라갈 것입니다.</li>
+                        <li><strong>[FAIL] 실패 항목:</strong> 반드시 수정해야 합니다. 이대로 두면 손실이 계속됩니다.</li>
+                        <li><strong>[INFO] 정보 항목:</strong> 일반적인 개선 제안입니다. 시간이 날 때 검토해보세요.</li>
+                    </ul>
+                    <p><strong>실전 활용:</strong> 우선순위는 [FAIL] → [WARN] → [OK] → [INFO] 순입니다. FAIL 항목부터 즉시 수정하세요!</p>
+                </div>
+                <h3>📋 데이터 기반 개선 제안</h3>
+<div class="highlight-box box-info">[INFO] VIX HIGH 레짐 승률 66.0% - 임계값 완화 효과 확인 (-2점 → -3점 검토)</div><div class="highlight-box box-success">[OK] EXTREME 임계값 19점 최적 (승률 76.6%)</div><div class="highlight-box box-warning">[WARN] 손실 패턴 발견: Stage 4: 68% of losses (102 signals)</div><div class="highlight-box box-info">[INFO] Context Score 재분배 권장: TD 비중 축소, FTD 비중 확대</div><div class="highlight-box box-info">[INFO] Stage 1/4 진입 시점에 신호 가중치 추가 부여 검토</div><div class="highlight-box box-info">[INFO] 변동성 Tier별 최적 보유 기간 차별화 (High: 10일, Low: 20일)</div>
+            </section>
+        </div>
+        
+        <div class="footer">
+            <p><strong>RYAION v19.1 유니버설 인디케이터</strong></p>
+            <p>심층 성능 분석 보고서 - 데이터 기반 전략 개선 시스템</p>
+            <p style="margin-top: 10px; opacity: 0.8;">이 보고서는 실제 다운로드된 시장 데이터를 기반으로 자동 생성되었습니다.</p>
+            <p style="margin-top: 5px; opacity: 0.7; font-size: 12px;">© 2025 RYAION Project. All data-driven insights.</p>
+        </div>
+    </div>
+</body>
+</html>
